@@ -271,21 +271,32 @@ Only after verify.py passes. Requirements:
 - **systemd** unit so it survives reboots (`Restart=always`, `After=network-online.target`,
   run as the user, venv python). Provide the unit file and enable instructions.
 
-Suggested layout (Claude Code owns final structure):
+Repo is a monorepo. The Pi's runtime job stays narrow (read/timestamp/buffer/send),
+but the FastAPI server and any future web frontend live alongside it in this repo
+so the JSON schema stays in one place:
 ```
 airmon/
-  drivers/{sps30.py, mhz19b.py, gy21.py}
-  verify.py
-  buffer.py       # SQLite read/write, sent-flag, batch fetch
-  agent.py        # read loop + POST + retry
-  config.py       # env/file config
-systemd/airmon.service
+  pi/
+    drivers/{sps30.py, mhz19b.py, gy21.py}
+    verify.py
+    buffer.py         # SQLite read/write, sent-flag, batch fetch
+    agent.py          # read loop + POST + retry
+    config.py         # env/file config
+    systemd/airmon.service
+    requirements.txt  # pyserial, smbus2
+  server/
+    app/{main.py, schema.py, db.py}
+    requirements.txt  # fastapi, uvicorn
+  web/                # future; not built yet
 ```
 
-The JSON payload shape should be simple and server-friendly, e.g. a batch of
-readings each with: reading id (uuid), captured_at (UTC ISO-8601), and per-sensor
-fields (pm1/pm25/pm4/pm10, co2_ppm + co2_warming flag, temp_c, rh_pct). Confirm the
-exact schema with the operator, since the FastAPI service is being written separately.
+Deploy `pi/` to the Pi (rsync target `/home/umut/airmon/`). `server/` runs on
+whatever host the operator chooses; the Pi POSTs to its URL.
+
+The JSON payload shape is LOCKED (2026-07-14): a batch of readings, each with a
+reading id (uuid, idempotency key), captured_at (UTC ISO-8601), and flat per-sensor
+fields (pm1/pm25/pm4/pm10, co2_ppm + co2_warming flag, temp_c, rh_pct). The
+pydantic model in `server/app/schema.py` is the source of truth.
 
 ### 5.5 Known failure modes to check before blaming code
 - Flaky/absent 0x40 on i2cdetect -> unsoldered GY-21 header pins.
