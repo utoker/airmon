@@ -272,8 +272,8 @@ Only after verify.py passes. Requirements:
   run as the user, venv python). Provide the unit file and enable instructions.
 
 Repo is a monorepo. The Pi's runtime job stays narrow (read/timestamp/buffer/send),
-but the FastAPI server and any future web frontend live alongside it in this repo
-so the JSON schema stays in one place:
+but the FastAPI server and the SPA live alongside it here so the JSON schema stays
+in one place:
 ```
 airmon/
   pi/
@@ -282,16 +282,21 @@ airmon/
     buffer.py         # SQLite read/write, sent-flag, batch fetch
     agent.py          # read loop + POST + retry
     config.py         # env/file config
-    systemd/airmon.service
     requirements.txt  # pyserial, smbus2
   server/
     app/{main.py, schema.py, db.py}
     requirements.txt  # fastapi, uvicorn
-  web/                # future; not built yet
+  web/                # Vite + React + Recharts SPA
 ```
 
-Deploy `pi/` to the Pi (rsync target `/home/umut/airmon/`). `server/` runs on
-whatever host the operator chooses; the Pi POSTs to its URL.
+Deploy `pi/` to the Pi (rsync target `/home/umut/airmon/`). Server + web are also
+deployed to the same Pi in the current topology (see
+[utoker/homelab](https://github.com/utoker/homelab)), but any host that speaks HTTP
+would work.
+
+**Deployment orchestration for the Pi (systemd units, Caddy reverse proxy, DNS/DDNS,
+security, backups) lives in a separate repo: [utoker/homelab](https://github.com/utoker/homelab).**
+This repo owns app code; that repo owns "where and how it runs".
 
 The JSON payload shape is LOCKED (2026-07-14): a batch of readings, each with a
 reading id (uuid, idempotency key), captured_at (UTC ISO-8601), and flat per-sensor
