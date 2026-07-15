@@ -9,7 +9,7 @@ User=umut
 Group=umut
 SupplementaryGroups=dialout i2c gpio
 WorkingDirectory=/home/umut/airmon
-Environment=AIRMON_SERVER_URL=http://127.0.0.1:8000
+Environment=AIRMON_SERVER_URL=http://127.0.0.1:8000/api
 Environment=AIRMON_BUFFER_DB=/home/umut/airmon-data/buffer.db
 Environment=AIRMON_SAMPLE_INTERVAL_S=5
 Environment=AIRMON_MHZ19B_DEVICE=/dev/ttyAMA0

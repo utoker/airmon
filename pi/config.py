@@ -27,7 +27,7 @@ def load() -> Config:
         sample_interval_s = float(os.environ.get("AIRMON_SAMPLE_INTERVAL_S", "5")),
         mhz19b_warmup_s   = float(os.environ.get("AIRMON_MHZ19B_WARMUP_S", "180")),
         buffer_db_path    = os.environ.get("AIRMON_BUFFER_DB", os.path.expanduser("~/.local/state/airmon/buffer.db")),
-        server_url        = os.environ.get("AIRMON_SERVER_URL", "http://127.0.0.1:8000"),
+        server_url        = os.environ.get("AIRMON_SERVER_URL", "http://127.0.0.1:8000/api"),
         post_batch_size   = int(os.environ.get("AIRMON_POST_BATCH_SIZE", "50")),
         post_timeout_s    = float(os.environ.get("AIRMON_POST_TIMEOUT_S", "10")),
         backoff_initial_s = float(os.environ.get("AIRMON_BACKOFF_INITIAL_S", "2")),

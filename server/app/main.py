@@ -1,7 +1,10 @@
+import os
 import sqlite3
 from contextlib import asynccontextmanager
+from datetime import datetime
 
-from fastapi import FastAPI, HTTPException
+from fastapi import APIRouter, FastAPI, HTTPException
+from fastapi.staticfiles import StaticFiles
 
 from .db import connect, init_db
 from .schema import ReadingBatch
@@ -14,14 +17,15 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="airmon server", lifespan=lifespan)
+api = APIRouter(prefix="/api")
 
 
-@app.get("/health")
+@api.get("/health")
 def health() -> dict:
     return {"status": "ok"}
 
 
-@app.post("/readings")
+@api.post("/readings")
 def post_readings(batch: ReadingBatch) -> dict:
     inserted = 0
     duplicates = 0
@@ -49,13 +53,35 @@ def post_readings(batch: ReadingBatch) -> dict:
     return {"inserted": inserted, "duplicates": duplicates, "total": len(batch.readings)}
 
 
-@app.get("/readings")
-def get_readings(limit: int = 100) -> dict:
-    if limit < 1 or limit > 1000:
-        raise HTTPException(status_code=400, detail="limit must be 1..1000")
+@api.get("/readings")
+def get_readings(
+    since: datetime | None = None,
+    until: datetime | None = None,
+    limit: int = 1000,
+) -> dict:
+    if limit < 1 or limit > 10000:
+        raise HTTPException(status_code=400, detail="limit must be 1..10000")
+    where: list[str] = []
+    params: list = []
+    if since is not None:
+        where.append("captured_at >= ?")
+        params.append(since.isoformat())
+    if until is not None:
+        where.append("captured_at <= ?")
+        params.append(until.isoformat())
+    where_sql = ("WHERE " + " AND ".join(where)) if where else ""
+    params.append(limit)
     with connect() as conn:
         rows = conn.execute(
-            "SELECT * FROM readings ORDER BY captured_at DESC LIMIT ?",
-            (limit,),
+            f"SELECT * FROM readings {where_sql} ORDER BY captured_at DESC LIMIT ?",
+            params,
         ).fetchall()
     return {"readings": [dict(r) for r in rows]}
+
+
+app.include_router(api)
+
+
+_STATIC_DIR = os.environ.get("AIRMON_STATIC_DIR")
+if _STATIC_DIR and os.path.isdir(_STATIC_DIR):
+    app.mount("/", StaticFiles(directory=_STATIC_DIR, html=True), name="static")

@@ -1,0 +1,56 @@
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: #f6f6f7;
+  color: #222;
+}
+.app { max-width: 1100px; margin: 0 auto; padding: 20px; }
+
+header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+header h1 { margin: 0; font-size: 22px; font-weight: 600; }
+
+.controls { display: flex; gap: 6px; align-items: center; }
+.controls button {
+  background: white;
+  border: 1px solid #d0d0d5;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font: inherit;
+}
+.controls button.active { background: #222; color: white; border-color: #222; }
+.controls .status { color: #777; margin-left: 10px; font-size: 12px; }
+.controls .error { color: #b40; }
+
+.latest {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.metric {
+  background: white;
+  padding: 14px;
+  border-radius: 8px;
+  border: 1px solid #e5e5e8;
+}
+.metric-label { color: #777; font-size: 12px; }
+.metric-value { font-size: 26px; font-weight: 600; margin-top: 2px; }
+.metric-warn { color: #b40; font-size: 11px; margin-top: 4px; }
+
+.card {
+  background: white;
+  padding: 18px;
+  border-radius: 8px;
+  border: 1px solid #e5e5e8;
+  margin-bottom: 16px;
+}
+.card h2 { margin: 0 0 12px 0; font-size: 14px; font-weight: 600; color: #444; }

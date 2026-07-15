@@ -9,6 +9,7 @@ User=umut
 Group=umut
 WorkingDirectory=/home/umut/airmon-server
 Environment=AIRMON_DB_PATH=/home/umut/airmon-data/server.db
+Environment=AIRMON_STATIC_DIR=/home/umut/airmon-web
 ExecStart=/home/umut/airmon-server/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
 Restart=always
 RestartSec=5
