@@ -22,8 +22,8 @@ export function App() {
 
   useEffect(() => {
     let cancelled = false
-    async function load() {
-      setLoading(true)
+    async function load({ showLoading }: { showLoading: boolean }) {
+      if (showLoading) setLoading(true)
       try {
         const since = new Date(Date.now() - rangeHours * 3600_000).toISOString()
         const r = await fetchReadings(since)
@@ -34,11 +34,11 @@ export function App() {
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e))
       } finally {
-        if (!cancelled) setLoading(false)
+        if (!cancelled && showLoading) setLoading(false)
       }
     }
-    load()
-    const id = setInterval(load, REFRESH_MS)
+    load({ showLoading: true })
+    const id = setInterval(() => load({ showLoading: false }), REFRESH_MS)
     return () => { cancelled = true; clearInterval(id) }
   }, [rangeHours])
 
@@ -47,7 +47,8 @@ export function App() {
       tLabel: new Date(r.captured_at).toLocaleTimeString(),
       pm1: r.pm1, pm25: r.pm25, pm4: r.pm4, pm10: r.pm10,
       co2: r.co2_ppm,
-      temp: r.temp_c, rh: r.rh_pct,
+      temp: r.temp_c === null ? null : cToF(r.temp_c),
+      rh: r.rh_pct,
     }))
   , [readings])
 
@@ -74,10 +75,12 @@ export function App() {
 
       {latest && (
         <section className="latest">
-          <Metric label="PM2.5 (µg/m³)" value={latest.pm25} />
+          <Metric label="PM2.5 (µg/m³)" value={latest.pm25}
+                  band={pm25Band(latest.pm25)} />
           <Metric label="CO₂ (ppm)" value={latest.co2_ppm}
+                  band={latest.co2_warming ? null : co2Band(latest.co2_ppm)}
                   warn={latest.co2_warming ? 'warming up' : undefined} />
-          <Metric label="Temp (°C)" value={latest.temp_c} />
+          <Metric label="Temp (°F)" value={latest.temp_c === null ? null : cToF(latest.temp_c)} />
           <Metric label="Humidity (%)" value={latest.rh_pct} />
         </section>
       )}
@@ -119,25 +122,66 @@ export function App() {
             <YAxis yAxisId="rh" orientation="right" domain={[0,100]} />
             <Tooltip />
             <Legend />
-            <Line yAxisId="temp" dataKey="temp" name="Temp °C" dot={false} stroke="#e97a5b" isAnimationActive={false} />
+            <Line yAxisId="temp" dataKey="temp" name="Temp °F" dot={false} stroke="#e97a5b" isAnimationActive={false} />
             <Line yAxisId="rh"   dataKey="rh"   name="RH %"   dot={false} stroke="#5eaadf" isAnimationActive={false} />
           </LineChart>
         </ResponsiveContainer>
       </ChartCard>
+
+      <RangeReference />
     </div>
   )
 }
 
-function Metric({label, value, warn}: {label: string, value: number | null, warn?: string}) {
+type Band = { label: string, color: string }
+
+function Metric({label, value, band, warn}: {
+  label: string, value: number | null, band?: Band | null, warn?: string,
+}) {
   return (
     <div className="metric">
       <div className="metric-label">{label}</div>
       <div className="metric-value">
         {value === null ? '—' : value.toFixed(1)}
       </div>
+      {band && (
+        <div className="metric-band" style={{background: band.color}}>
+          {band.label}
+        </div>
+      )}
       {warn && <div className="metric-warn">{warn}</div>}
     </div>
   )
+}
+
+const cToF = (c: number) => c * 9 / 5 + 32
+
+const BANDS = {
+  good:      '#2f9e44',
+  moderate:  '#94c123',
+  sensitive: '#f59f00',
+  unhealthy: '#e8590c',
+  veryBad:   '#c92a2a',
+  hazardous: '#7c1d6f',
+} as const
+
+function pm25Band(v: number | null): Band | null {
+  if (v === null) return null
+  if (v < 9)   return { label: 'Good',                     color: BANDS.good }
+  if (v < 35)  return { label: 'Moderate',                 color: BANDS.moderate }
+  if (v < 55)  return { label: 'Unhealthy for sensitive',  color: BANDS.sensitive }
+  if (v < 125) return { label: 'Unhealthy',                color: BANDS.unhealthy }
+  if (v < 225) return { label: 'Very unhealthy',           color: BANDS.veryBad }
+  return              { label: 'Hazardous',                color: BANDS.hazardous }
+}
+
+function co2Band(v: number | null): Band | null {
+  if (v === null) return null
+  if (v < 800)  return { label: 'Great',  color: BANDS.good }
+  if (v < 1000) return { label: 'Fine',   color: BANDS.moderate }
+  if (v < 1500) return { label: 'Stuffy', color: BANDS.sensitive }
+  if (v < 2000) return { label: 'Poor',   color: BANDS.unhealthy }
+  return               { label: 'Bad',    color: BANDS.veryBad }
 }
 
 function ChartCard({title, children}: {title: string, children: ReactNode}) {
@@ -146,5 +190,75 @@ function ChartCard({title, children}: {title: string, children: ReactNode}) {
       <h2>{title}</h2>
       {children}
     </section>
+  )
+}
+
+type Row = { label: string, range: string, note: string, color: string }
+
+const PM25_ROWS: Row[] = [
+  { label: 'Good',                    range: '0 – 9',     note: 'WHO 2021 & EPA 2024 target', color: BANDS.good },
+  { label: 'Moderate',                range: '9 – 35',    note: 'acceptable',                 color: BANDS.moderate },
+  { label: 'Unhealthy for sensitive', range: '35 – 55',   note: 'kids, elderly, asthma',      color: BANDS.sensitive },
+  { label: 'Unhealthy',               range: '55 – 125',  note: 'everyone',                   color: BANDS.unhealthy },
+  { label: 'Very unhealthy',          range: '125 – 225', note: '',                           color: BANDS.veryBad },
+  { label: 'Hazardous',               range: '225+',      note: '',                           color: BANDS.hazardous },
+]
+
+const CO2_ROWS: Row[] = [
+  { label: 'Great',  range: '< 800',       note: 'outdoor ~420 ppm; fresh room', color: BANDS.good },
+  { label: 'Fine',   range: '800 – 1000',  note: 'ASHRAE-comfort ceiling',       color: BANDS.moderate },
+  { label: 'Stuffy', range: '1000 – 1500', note: 'measurable focus drop',        color: BANDS.sensitive },
+  { label: 'Poor',   range: '1500 – 2000', note: 'headache, fatigue',            color: BANDS.unhealthy },
+  { label: 'Bad',    range: '2000+',       note: 'ventilate now',                color: BANDS.veryBad },
+]
+
+function RangeTable({title, unit, rows}: {title: string, unit: string, rows: Row[]}) {
+  return (
+    <div className="range-table">
+      <h3>{title} <span className="range-unit">({unit})</span></h3>
+      <table>
+        <tbody>
+          {rows.map(r => (
+            <tr key={r.label}>
+              <td><span className="chip" style={{background: r.color}} /></td>
+              <td className="band-name">{r.label}</td>
+              <td className="range-cell">{r.range}</td>
+              <td className="note">{r.note}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function RangeReference() {
+  return (
+    <details className="ranges">
+      <summary>About the ranges</summary>
+      <div className="ranges-body">
+        <div>
+          <RangeTable title="PM2.5" unit="µg/m³" rows={PM25_ROWS} />
+          <p className="pm10-note">
+            PM10 uses similar bands; WHO 24h guideline is 45 µg/m³.
+          </p>
+        </div>
+        <RangeTable title="CO₂" unit="ppm" rows={CO2_ROWS} />
+      </div>
+      <p className="disclaimer">
+        Thresholds are for 24-hour averages; short spikes on this dashboard don't constitute a health event.
+      </p>
+      <div className="sources">
+        <span>Sources:</span>
+        <a href="https://www.who.int/news/item/22-09-2021-new-who-global-air-quality-guidelines-aim-to-save-millions-of-lives-from-air-pollution"
+           target="_blank" rel="noreferrer">WHO 2021 guidelines</a>
+        <a href="https://www.iqair.com/us/support/knowledge-base/KA-05074-US"
+           target="_blank" rel="noreferrer">EPA 2024 AQI update</a>
+        <a href="https://www.ashrae.org/file%20library/about/position%20documents/pd-on-indoor-carbon-dioxide-english.pdf"
+           target="_blank" rel="noreferrer">ASHRAE indoor CO₂ position</a>
+        <a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC4892924/"
+           target="_blank" rel="noreferrer">Allen 2016 — CO₂ &amp; cognition</a>
+      </div>
+    </details>
   )
 }

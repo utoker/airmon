@@ -45,6 +45,16 @@ header h1 { margin: 0; font-size: 22px; font-weight: 600; }
 .metric-label { color: #777; font-size: 12px; }
 .metric-value { font-size: 26px; font-weight: 600; margin-top: 2px; }
 .metric-warn { color: #b40; font-size: 11px; margin-top: 4px; }
+.metric-band {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  color: white;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
 
 .card {
   background: white;
@@ -54,3 +64,55 @@ header h1 { margin: 0; font-size: 22px; font-weight: 600; }
   margin-bottom: 16px;
 }
 .card h2 { margin: 0 0 12px 0; font-size: 14px; font-weight: 600; color: #444; }
+
+.ranges {
+  background: white;
+  border: 1px solid #e5e5e8;
+  border-radius: 8px;
+  padding: 12px 18px;
+  margin-top: 16px;
+}
+.ranges summary {
+  cursor: pointer;
+  color: #555;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 4px 0;
+  list-style: none;
+}
+.ranges summary::before {
+  content: '▸';
+  display: inline-block;
+  margin-right: 6px;
+  transition: transform 0.15s;
+}
+.ranges[open] summary::before { transform: rotate(90deg); }
+.ranges-body {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 24px;
+  padding-top: 12px;
+}
+.range-table h3 { margin: 0 0 8px 0; font-size: 13px; font-weight: 600; color: #444; }
+.range-table .range-unit { color: #999; font-weight: 400; }
+.range-table table { border-collapse: collapse; width: 100%; font-size: 12px; }
+.range-table td { padding: 4px 6px; vertical-align: middle; }
+.range-table .chip {
+  display: inline-block; width: 12px; height: 12px; border-radius: 3px;
+}
+.range-table .band-name { font-weight: 500; white-space: nowrap; }
+.range-table .range-cell { color: #444; white-space: nowrap; }
+.range-table .note { color: #777; }
+.pm10-note { color: #777; font-size: 11px; margin: 8px 0 0; }
+.disclaimer { color: #777; font-size: 11px; margin: 16px 0 0; font-style: italic; }
+.sources {
+  margin-top: 10px;
+  font-size: 11px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  align-items: center;
+  color: #777;
+}
+.sources a { color: #4a72c1; text-decoration: none; }
+.sources a:hover { text-decoration: underline; }
