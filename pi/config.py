@@ -18,6 +18,8 @@ class Config:
     backoff_initial_s: float
     backoff_max_s: float
 
+    buffer_retention_days: int
+
 
 def load() -> Config:
     return Config(
@@ -32,4 +34,5 @@ def load() -> Config:
         post_timeout_s    = float(os.environ.get("AIRMON_POST_TIMEOUT_S", "10")),
         backoff_initial_s = float(os.environ.get("AIRMON_BACKOFF_INITIAL_S", "2")),
         backoff_max_s     = float(os.environ.get("AIRMON_BACKOFF_MAX_S", "120")),
+        buffer_retention_days = int(os.environ.get("AIRMON_BUFFER_RETENTION_DAYS", "7")),
     )

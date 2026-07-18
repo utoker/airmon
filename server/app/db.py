@@ -1,6 +1,7 @@
 import os
 import sqlite3
 from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 DEFAULT_DB_PATH = Path(__file__).resolve().parent.parent / "airmon.db"
@@ -29,6 +30,10 @@ def db_path() -> Path:
 
 def init_db() -> None:
     with sqlite3.connect(db_path()) as conn:
+        # WAL lets FastAPI's per-request INSERTs proceed concurrently with a
+        # maintenance DELETE/VACUUM; busy_timeout covers VACUUM's brief
+        # exclusive-lock window. Both PRAGMAs are idempotent.
+        conn.execute("PRAGMA journal_mode = WAL")
         conn.executescript(SCHEMA)
 
 
@@ -36,7 +41,35 @@ def init_db() -> None:
 def connect():
     conn = sqlite3.connect(db_path(), isolation_level=None)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout = 5000")
     try:
         yield conn
     finally:
         conn.close()
+
+
+def prune_older_than(days: int) -> tuple[int, int]:
+    """Delete readings whose captured_at is older than `days` days ago.
+
+    captured_at is stored as ISO-8601 with `+00:00` tz suffix; lexicographic
+    comparison is safe because every row has the same suffix. Returns
+    (deleted, remaining_total).
+    """
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    with connect() as conn:
+        cur = conn.execute(
+            "DELETE FROM readings WHERE captured_at < ?",
+            (cutoff,),
+        )
+        deleted = cur.rowcount
+        remaining = conn.execute("SELECT COUNT(*) FROM readings").fetchone()[0]
+    return deleted, remaining
+
+
+def vacuum() -> None:
+    with connect() as conn:
+        conn.execute("VACUUM")
+
+
+def size_bytes() -> int:
+    return db_path().stat().st_size
