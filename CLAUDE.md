@@ -26,7 +26,53 @@ not need dumbing down.
 
 ---
 
-## Hardware (already wired, pending verification)
+## Current state (2026-07-18)
+
+Phases 4 and 5 are done. The Pi has been sampling continuously since 2026-07-14
+and the FastAPI server + SPA are serving `https://airmon.utoker.com` behind
+Cloudflare through Caddy. The deployment orchestration lives in
+[utoker/homelab](https://github.com/utoker/homelab) (systemd units, Caddy,
+backups, DNS/DDNS). This repo owns app code; that repo owns "where and how it
+runs". Everything below is still accurate for hardware and protocols; the
+software sections describe what shipped, not a plan.
+
+**Where data lives on the Pi** (single mount, `/srv/data` on a Samsung 860
+EVO 500 GB SSD):
+- `/srv/data/airmon/buffer.db`: Pi-side offline queue (agent process).
+- `/srv/data/airmon/server.db`: server-side storage-of-record (FastAPI process).
+- `/srv/data/backups/`: nightly `server-*.db.gz` snapshots, mirrored to R2.
+
+Both databases are configured through env vars on the systemd units in the
+homelab repo (`AIRMON_BUFFER_DB`, `AIRMON_DB_PATH`). Nothing lives under
+`/home/umut/airmon-data/` any more.
+
+**Tiered downsampling** (shipped, in `server/app/rollup.py` +
+`server/app/maintenance.py`):
+- `readings` (raw 5s samples): kept 14 days
+  (`AIRMON_TIER_RAW_DAYS`, default 14).
+- `readings_minute` (per-minute aggregate): kept 90 days
+  (`AIRMON_TIER_MINUTE_DAYS`, default 90).
+- `readings_hour` (per-hour aggregate): kept forever.
+
+The daily maintenance job rolls up raw into minute+hour buckets, verifies a
+random sample of aggregate rows against a fresh raw query, and only then
+prunes. If any sample mismatches, it refuses to prune that run. Hour storage
+is ~2.3 MB/year, so `server.db` settles near 100 MB long-term rather than
+growing unbounded. The single retention env var `AIRMON_SERVER_RETENTION_DAYS`
+that predated this design no longer exists; the two tier vars replace it.
+
+`buffer.db` on the Pi has its own retention loop (`AIRMON_BUFFER_RETENTION_DAYS=7`)
+that drops rows where `sent=1`. Rows still marked `sent=0` are never touched;
+they are the only durable copy while the network is down. `buffer.db` is
+deliberately NOT backed up: every row is duplicated into `server.db` on
+successful send, and the agent recreates an empty buffer on first start.
+
+The web UI's time-range picker knows which tier to query for a given range,
+so a freshly restored `server.db` works without a rebuild step.
+
+---
+
+## Hardware (wired and verified 2026-07-14)
 
 The Pi is a **Raspberry Pi 4 Model B**. OS is **Raspberry Pi OS Lite 64-bit**
 (Debian Trixie). Boot config lives at **`/boot/firmware/config.txt`** and
@@ -141,10 +187,12 @@ Hard rules for that future phase (state them when we get there):
 
 ---
 
-## PHASE 4 — Pi OS setup and hardware verification (DO THIS FIRST)
+## PHASE 4 — Pi OS setup and hardware verification (PASSED 2026-07-14)
 
-The wiring is done but NOT yet verified. Do not write any driver until every
-check below passes. Commands that touch i2c/serial run ON the Pi.
+Kept here as the canonical bring-up procedure. If the SD card is ever wiped
+or the hardware is redone, this is the runbook. All four checks passed on
+the current Pi and its serial-device mapping is captured in the memory file
+`uart_device_mapping.md`. Commands that touch i2c/serial run ON the Pi.
 
 ### 4.1 Ensure interfaces are enabled
 
@@ -201,7 +249,16 @@ Report all four outputs before proceeding.
 
 ---
 
-## PHASE 5 — Verification script, then the agent
+## PHASE 5 — Verification script, then the agent (SHIPPED)
+
+Both deliverables below shipped. Section 5.1's driver choice landed on
+hand-rolled SHDLC; 5.3's `verify.py` lives at `pi/verify.py`; 5.4's agent
+lives at `pi/agent.py` with `pi/buffer.py`, `pi/config.py`, and the drivers
+under `pi/drivers/`. The server companion is `server/app/` with `main.py`,
+`schema.py`, `db.py`, `rollup.py`, `maintenance.py`. Systemd units are in
+the [utoker/homelab](https://github.com/utoker/homelab) repo. See the
+"Current state" section at the top for what shipped beyond the original
+plan.
 
 ### 5.1 Driver approach
 
@@ -281,21 +338,23 @@ airmon/
     verify.py
     buffer.py         # SQLite read/write, sent-flag, batch fetch
     agent.py          # read loop + POST + retry
+    maintenance.py    # buffer.db prune (sent+aged), invoked by systemd timer
     config.py         # env/file config
     requirements.txt  # pyserial, smbus2
   server/
-    app/{main.py, schema.py, db.py}
+    app/{main.py, schema.py, db.py, rollup.py, maintenance.py}
     requirements.txt  # fastapi, uvicorn
   web/                # Vite + React + Recharts SPA
 ```
 
-Deploy `pi/` to the Pi (rsync target `/home/umut/airmon/`). Server + web are also
-deployed to the same Pi in the current topology (see
-[utoker/homelab](https://github.com/utoker/homelab)), but any host that speaks HTTP
-would work.
+Deploy `pi/` to the Pi (rsync target `/home/umut/airmon/`), `server/` to
+`/home/umut/airmon-server/`, and the built `web/dist/` to `/home/umut/airmon-web/`.
+The git checkout on the Pi lives at `/home/umut/airmon-repo/` on purpose:
+`~/airmon` is a rsync target and would erase the checkout under itself.
+`scripts/deploy-airmon.sh` in the homelab repo does the whole thing.
 
 **Deployment orchestration for the Pi (systemd units, Caddy reverse proxy, DNS/DDNS,
-security, backups) lives in a separate repo: [utoker/homelab](https://github.com/utoker/homelab).**
+security, backups, retention timers) lives in a separate repo: [utoker/homelab](https://github.com/utoker/homelab).**
 This repo owns app code; that repo owns "where and how it runs".
 
 The JSON payload shape is LOCKED (2026-07-14): a batch of readings, each with a
