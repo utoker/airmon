@@ -4,6 +4,8 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from . import rollup
+
 DEFAULT_DB_PATH = Path(__file__).resolve().parent.parent / "airmon.db"
 
 SCHEMA = """
@@ -21,6 +23,8 @@ CREATE TABLE IF NOT EXISTS readings (
     received_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 CREATE INDEX IF NOT EXISTS idx_readings_captured_at ON readings(captured_at);
+CREATE INDEX IF NOT EXISTS idx_readings_minute_bucket ON readings_minute(bucket_start);
+CREATE INDEX IF NOT EXISTS idx_readings_hour_bucket ON readings_hour(bucket_start);
 """
 
 
@@ -34,6 +38,7 @@ def init_db() -> None:
         # maintenance DELETE/VACUUM; busy_timeout covers VACUUM's brief
         # exclusive-lock window. Both PRAGMAs are idempotent.
         conn.execute("PRAGMA journal_mode = WAL")
+        rollup.init_rollup_tables(conn)
         conn.executescript(SCHEMA)
 
 

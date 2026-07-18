@@ -3,7 +3,7 @@ import {
   LineChart, Line, XAxis, YAxis, Tooltip,
   CartesianGrid, ResponsiveContainer, Legend,
 } from 'recharts'
-import { fetchReadings, type Reading } from './api'
+import { fetchReadings, type Reading, type Resolution } from './api'
 
 const RANGES = [
   { label: 'Last hour', hours: 1 },
@@ -12,11 +12,18 @@ const RANGES = [
   { label: 'Last 7d',   hours: 24 * 7 },
 ] as const
 
+const RESOLUTION_LABEL: Record<Resolution, string> = {
+  '5s': '5-second samples',
+  '1m': 'per-minute averages',
+  '1h': 'hourly averages',
+}
+
 const REFRESH_MS = 5000
 
 export function App() {
   const [rangeHours, setRangeHours] = useState<number>(1)
   const [readings, setReadings] = useState<Reading[]>([])
+  const [resolution, setResolution] = useState<Resolution>('5s')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
@@ -28,7 +35,8 @@ export function App() {
         const since = new Date(Date.now() - rangeHours * 3600_000).toISOString()
         const r = await fetchReadings(since)
         if (!cancelled) {
-          setReadings(r.slice().reverse())
+          setReadings(r.readings)
+          setResolution(r.resolution)
           setError(null)
         }
       } catch (e) {
@@ -44,13 +52,14 @@ export function App() {
 
   const chartData = useMemo(() =>
     readings.map(r => ({
-      tLabel: new Date(r.captured_at).toLocaleTimeString(),
+      tLabel: formatTick(r.captured_at, rangeHours),
       pm1: r.pm1, pm25: r.pm25, pm4: r.pm4, pm10: r.pm10,
+      pm25_max: r.pm25_max ?? null,
       co2: r.co2_ppm,
       temp: r.temp_c === null ? null : cToF(r.temp_c),
       rh: r.rh_pct,
     }))
-  , [readings])
+  , [readings, rangeHours])
 
   const latest = readings.at(-1)
 
@@ -67,7 +76,9 @@ export function App() {
             >{r.label}</button>
           ))}
           <span className="status">
-            {loading ? '…' : `${readings.length} pts`}
+            {loading
+              ? '…'
+              : `${readings.length} pts · ${RESOLUTION_LABEL[resolution]}`}
             {error && <span className="error"> · {error}</span>}
           </span>
         </div>
@@ -97,6 +108,11 @@ export function App() {
             <Line dataKey="pm25" name="PM2.5" dot={false} stroke="#82ca9d" isAnimationActive={false} />
             <Line dataKey="pm4"  name="PM4"   dot={false} stroke="#ffc658" isAnimationActive={false} />
             <Line dataKey="pm10" name="PM10"  dot={false} stroke="#ff7f7f" isAnimationActive={false} />
+            {resolution !== '5s' && (
+              <Line dataKey="pm25_max" name="PM2.5 max" dot={false}
+                    stroke="#82ca9d" strokeDasharray="4 2" strokeOpacity={0.5}
+                    isAnimationActive={false} />
+            )}
           </LineChart>
         </ResponsiveContainer>
       </ChartCard>
@@ -155,6 +171,16 @@ function Metric({label, value, band, warn}: {
 }
 
 const cToF = (c: number) => c * 9 / 5 + 32
+
+function formatTick(iso: string, rangeHours: number): string {
+  const d = new Date(iso)
+  if (rangeHours >= 24) {
+    return d.toLocaleString(undefined, {
+      month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+    })
+  }
+  return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+}
 
 const BANDS = {
   good:      '#2f9e44',
