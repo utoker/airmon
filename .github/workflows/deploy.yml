@@ -1,0 +1,17 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-airmon
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, airmon-pi]
+    steps:
+      - name: Run deploy script
+        run: bash "${AIRMON_DEPLOY_SCRIPT:-$HOME/homelab/scripts/deploy-airmon.sh}"
