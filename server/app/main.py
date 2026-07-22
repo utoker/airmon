@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 
+from . import rollup
 from .db import connect, init_db
 from .schema import ReadingBatch
 
@@ -17,6 +18,8 @@ _TIER_HOUR = ("1h", 3600, "readings_hour")
 # Prefer more detail; upper bound loose so Recharts stays responsive. Bands
 # roughly: 1h->raw (720), 6h->minute (360), 24h->minute (1440), 7d->hour (168).
 _POINT_TARGET_MAX = 2000
+
+_TIER_BUCKET_FMT = {"1m": rollup._MINUTE_FMT, "1h": rollup._HOUR_FMT}
 
 
 @asynccontextmanager
@@ -131,16 +134,44 @@ def get_readings(
     else:
         label, bucket_s, table = _pick_tier(range_seconds)
 
-    time_col = "captured_at" if table == "readings" else "bucket_start"
+    since_iso, until_iso = since.isoformat(), until.isoformat()
     with connect() as conn:
-        # ORDER BY ASC so the chart shows oldest -> newest without the client
-        # having to reverse. No LIMIT: tier selection already bounds row count.
-        rows = conn.execute(
-            f"SELECT * FROM {table} "
-            f"WHERE {time_col} >= ? AND {time_col} < ? "
-            f"ORDER BY {time_col} ASC",
-            (since.isoformat(), until.isoformat()),
-        ).fetchall()
+        if table == "readings":
+            # Raw tier: pull directly. No LIMIT needed; tier selection bounds rows.
+            rows = conn.execute(
+                "SELECT * FROM readings "
+                "WHERE captured_at >= ? AND captured_at < ? "
+                "ORDER BY captured_at ASC",
+                (since_iso, until_iso),
+            ).fetchall()
+        else:
+            # Aggregate tier. `readings_{minute,hour}` is only rebuilt daily by
+            # the maintenance job, so anything since the last rollup is missing
+            # there. Aggregate raw on the fly for the fresh portion, and only
+            # fall back to the pre-rolled table for the portion older than raw
+            # retention.
+            bucket_fmt = _TIER_BUCKET_FMT[label]
+            raw_first = conn.execute(
+                "SELECT MIN(captured_at) FROM readings"
+            ).fetchone()[0]
+            rows: list = []
+            if raw_first is None or since_iso >= raw_first:
+                rows = rollup.query_aggregated(conn, bucket_fmt, since_iso, until_iso)
+            else:
+                # Split: pre-rolled for old buckets, on-the-fly for buckets that
+                # still have raw rows. Split at the bucket containing raw_first
+                # so we don't emit a partial bucket from the fresh side.
+                split_iso = conn.execute(
+                    f"SELECT strftime('{bucket_fmt}', ?)", (raw_first,)
+                ).fetchone()[0]
+                old_rows = conn.execute(
+                    f"SELECT * FROM {table} "
+                    f"WHERE bucket_start >= ? AND bucket_start < ? "
+                    f"ORDER BY bucket_start ASC",
+                    (since_iso, split_iso),
+                ).fetchall()
+                new_rows = rollup.query_aggregated(conn, bucket_fmt, split_iso, until_iso)
+                rows = list(old_rows) + list(new_rows)
     return {
         "resolution": label,
         "bucket_seconds": bucket_s,

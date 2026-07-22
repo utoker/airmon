@@ -242,6 +242,31 @@ def verify_bucket(
     return (len(diffs) == 0), {"diffs": diffs, "bucket": bucket_start}
 
 
+def query_aggregated(
+    conn: sqlite3.Connection,
+    bucket_fmt: str,
+    since_iso: str,
+    until_iso: str,
+) -> list[sqlite3.Row]:
+    """Aggregate raw `readings` into buckets on the fly for [since, until).
+
+    Same column shape as `SELECT * FROM readings_minute/hour`, so callers can
+    hand rows to the same response mapper. Used at query time so the UI sees
+    fresh data even before the daily maintenance rollup has run.
+    """
+    query = f"""
+        SELECT
+            strftime('{bucket_fmt}', captured_at) AS bucket_start,
+            COUNT(*) AS n,
+            {_select_columns()}
+        FROM readings
+        WHERE captured_at >= ? AND captured_at < ?
+        GROUP BY bucket_start
+        ORDER BY bucket_start ASC
+    """
+    return conn.execute(query, (since_iso, until_iso)).fetchall()
+
+
 def prune_raw_older_than(
     conn: sqlite3.Connection, cutoff_iso: str
 ) -> int:
