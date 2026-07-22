@@ -53,11 +53,11 @@ export function App() {
   const chartData = useMemo(() =>
     readings.map(r => ({
       tLabel: formatTick(r.captured_at, rangeHours),
-      pm1: r.pm1, pm25: r.pm25, pm4: r.pm4, pm10: r.pm10,
-      pm25_max: r.pm25_max ?? null,
+      pm1: round2(r.pm1), pm25: round2(r.pm25), pm4: round2(r.pm4), pm10: round2(r.pm10),
+      pm25_max: round2(r.pm25_max ?? null),
       co2: r.co2_ppm,
-      temp: r.temp_c === null ? null : cToF(r.temp_c),
-      rh: r.rh_pct,
+      temp: r.temp_c === null ? null : round2(cToF(r.temp_c)),
+      rh: round2(r.rh_pct),
     }))
   , [readings, rangeHours])
 
@@ -75,10 +75,10 @@ export function App() {
               className={rangeHours === r.hours ? 'active' : ''}
             >{r.label}</button>
           ))}
-          <span className="status">
-            {loading
-              ? '…'
-              : `${readings.length} pts · ${RESOLUTION_LABEL[resolution]}`}
+          <span className="status" style={{opacity: loading ? 0.5 : 1}}>
+            {readings.length
+              ? `${readings.length} pts · ${RESOLUTION_LABEL[resolution]}`
+              : loading ? 'loading…' : 'no data'}
             {error && <span className="error"> · {error}</span>}
           </span>
         </div>
@@ -171,6 +171,10 @@ function Metric({label, value, band, warn}: {
 }
 
 const cToF = (c: number) => c * 9 / 5 + 32
+
+function round2(v: number | null): number | null {
+  return v === null ? null : Math.round(v * 100) / 100
+}
 
 function formatTick(iso: string, rangeHours: number): string {
   const d = new Date(iso)
