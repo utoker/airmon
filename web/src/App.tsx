@@ -20,10 +20,28 @@ const RESOLUTION_LABEL: Record<Resolution, string> = {
 
 const REFRESH_MS = 5000
 
+// One fetch's result, kept together with the window it asked for so the
+// chart domain and the data never come from different refreshes.
+type Snapshot = {
+  since: number   // epoch ms
+  until: number   // epoch ms; client clock when the request went out
+  resolution: Resolution
+  bucketSeconds: number
+  readings: Reading[]
+}
+
+type ChartRow = {
+  t: number
+  pm1: number | null, pm25: number | null, pm4: number | null, pm10: number | null
+  pm25_max: number | null
+  co2: number | null
+  temp: number | null
+  rh: number | null
+}
+
 export function App() {
   const [rangeHours, setRangeHours] = useState<number>(1)
-  const [readings, setReadings] = useState<Reading[]>([])
-  const [resolution, setResolution] = useState<Resolution>('5s')
+  const [snap, setSnap] = useState<Snapshot | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
@@ -32,11 +50,16 @@ export function App() {
     async function load({ showLoading }: { showLoading: boolean }) {
       if (showLoading) setLoading(true)
       try {
-        const since = new Date(Date.now() - rangeHours * 3600_000).toISOString()
-        const r = await fetchReadings(since)
+        const until = Date.now()
+        const since = until - rangeHours * 3600_000
+        const r = await fetchReadings(new Date(since).toISOString())
         if (!cancelled) {
-          setReadings(r.readings)
-          setResolution(r.resolution)
+          setSnap({
+            since, until,
+            resolution: r.resolution,
+            bucketSeconds: r.bucket_seconds,
+            readings: r.readings,
+          })
           setError(null)
         }
       } catch (e) {
@@ -50,16 +73,43 @@ export function App() {
     return () => { cancelled = true; clearInterval(id) }
   }, [rangeHours])
 
-  const chartData = useMemo(() =>
-    readings.map(r => ({
-      tLabel: formatTick(r.captured_at, rangeHours),
-      pm1: round2(r.pm1), pm25: round2(r.pm25), pm4: round2(r.pm4), pm10: round2(r.pm10),
-      pm25_max: round2(r.pm25_max ?? null),
-      co2: r.co2_ppm,
-      temp: r.temp_c === null ? null : round2(cToF(r.temp_c)),
-      rh: round2(r.rh_pct),
-    }))
-  , [readings, rangeHours])
+  const readings = snap?.readings ?? []
+  const resolution = snap?.resolution ?? '5s'
+
+  const chartData = useMemo(() => {
+    if (!snap) return []
+    // Readings further apart than this mean nothing was recorded in between.
+    // An all-null row there makes each Line (connectNulls is off) break
+    // instead of drawing straight across the outage.
+    const maxGapMs = Math.max(2 * snap.bucketSeconds, 60) * 1000
+    const rows: ChartRow[] = []
+    for (const r of snap.readings) {
+      const t = Date.parse(r.captured_at)
+      const prev = rows.at(-1)
+      if (prev && t - prev.t > maxGapMs) {
+        rows.push({
+          t: (prev.t + t) / 2,
+          pm1: null, pm25: null, pm4: null, pm10: null, pm25_max: null,
+          co2: null, temp: null, rh: null,
+        })
+      }
+      rows.push({
+        t,
+        pm1: round2(r.pm1), pm25: round2(r.pm25), pm4: round2(r.pm4), pm10: round2(r.pm10),
+        pm25_max: round2(r.pm25_max ?? null),
+        co2: r.co2_ppm,
+        temp: r.temp_c === null ? null : round2(cToF(r.temp_c)),
+        rh: round2(r.rh_pct),
+      })
+    }
+    return rows
+  }, [snap])
+
+  // Real time axis pinned to the requested window, so gaps and empty edges
+  // take up the width they actually span.
+  const xDomain = snap ? [snap.since, snap.until] : ['auto', 'auto']
+  const spanHours = snap ? (snap.until - snap.since) / 3600_000 : rangeHours
+  const fmtTime = (t: unknown) => formatTick(Number(t), spanHours)
 
   const latest = readings.at(-1)
 
@@ -100,9 +150,10 @@ export function App() {
         <ResponsiveContainer width="100%" height={280}>
           <LineChart data={chartData}>
             <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="tLabel" minTickGap={40} />
+            <XAxis dataKey="t" type="number" scale="time" domain={xDomain}
+                   tickFormatter={fmtTime} minTickGap={40} />
             <YAxis />
-            <Tooltip />
+            <Tooltip labelFormatter={fmtTime} />
             <Legend />
             <Line dataKey="pm1"  name="PM1"   dot={false} stroke="#8884d8" isAnimationActive={false} />
             <Line dataKey="pm25" name="PM2.5" dot={false} stroke="#82ca9d" isAnimationActive={false} />
@@ -121,9 +172,10 @@ export function App() {
         <ResponsiveContainer width="100%" height={220}>
           <LineChart data={chartData}>
             <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="tLabel" minTickGap={40} />
+            <XAxis dataKey="t" type="number" scale="time" domain={xDomain}
+                   tickFormatter={fmtTime} minTickGap={40} />
             <YAxis domain={['auto', 'auto']} />
-            <Tooltip />
+            <Tooltip labelFormatter={fmtTime} />
             <Line dataKey="co2" name="CO₂" dot={false} stroke="#8884d8" isAnimationActive={false} />
           </LineChart>
         </ResponsiveContainer>
@@ -133,10 +185,11 @@ export function App() {
         <ResponsiveContainer width="100%" height={220}>
           <LineChart data={chartData}>
             <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="tLabel" minTickGap={40} />
+            <XAxis dataKey="t" type="number" scale="time" domain={xDomain}
+                   tickFormatter={fmtTime} minTickGap={40} />
             <YAxis yAxisId="temp" domain={['auto','auto']} />
             <YAxis yAxisId="rh" orientation="right" domain={[0,100]} />
-            <Tooltip />
+            <Tooltip labelFormatter={fmtTime} />
             <Legend />
             <Line yAxisId="temp" dataKey="temp" name="Temp °F" dot={false} stroke="#e97a5b" isAnimationActive={false} />
             <Line yAxisId="rh"   dataKey="rh"   name="RH %"   dot={false} stroke="#5eaadf" isAnimationActive={false} />
@@ -176,8 +229,8 @@ function round2(v: number | null): number | null {
   return v === null ? null : Math.round(v * 100) / 100
 }
 
-function formatTick(iso: string, rangeHours: number): string {
-  const d = new Date(iso)
+function formatTick(t: number, rangeHours: number): string {
+  const d = new Date(t)
   if (rangeHours >= 24) {
     return d.toLocaleString(undefined, {
       month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
