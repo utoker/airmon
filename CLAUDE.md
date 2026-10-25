@@ -6,6 +6,7 @@ A Raspberry Pi 4 reads three environmental sensors, timestamps the readings,
 buffers them locally, and POSTs them as JSON to a separate FastAPI service.
 
 The Pi's job is deliberately narrow: **read reliably, timestamp, buffer, send.**
+
 - No analysis, no dashboards, no storage-of-record on the Pi. That is all server-side.
 - No business logic on the Pi. "PM2.5 is high, do X" is a server decision.
 - When the network is down, buffer to local SQLite and replay on reconnect. Never drop a reading.
@@ -22,7 +23,6 @@ not need dumbing down.
   Prove each driver reads raw values before writing the agent.
 - **Flag anything that can damage the Pi or a sensor BEFORE running it, not after.**
 - Ask about parts on hand instead of assuming.
-- Style: no em dashes in prose.
 - If a decision changes something written in this file, update this file in
   the same commit.
 
@@ -37,6 +37,7 @@ orchestration (systemd units, Caddy, backups, DNS/DDNS, monitoring) lives in
 that repo owns "where and how it runs".
 
 **Data on the Pi** (single mount, `/srv/data` on a Samsung 860 EVO 500 GB SSD):
+
 - `/srv/data/airmon/buffer.db`: Pi-side offline queue (agent process, `AIRMON_BUFFER_DB`).
 - `/srv/data/airmon/server.db`: server-side storage-of-record (FastAPI process, `AIRMON_DB_PATH`).
 - `/srv/data/backups/`: nightly `server-*.db.gz` snapshots, mirrored to R2.
@@ -85,13 +86,13 @@ shifters are used anywhere in this build. Two sensors take 5V POWER but output
 - The 5-wire cable that shipped with it, decoded from the connector
   (red and black at opposite ends confirm orientation):
 
-  | Wire   | SPS30 pin | Function        | Lands on Pi        |
-  |--------|-----------|-----------------|--------------------|
-  | red    | 1 VDD     | 5V power        | phys 4 (5V)        |
-  | white  | 2 RX      | sensor input    | phys 7  (GPIO4/TXD3) |
-  | purple | 3 TX      | sensor output   | phys 29 (GPIO5/RXD3) |
-  | teal   | 4 SEL     | interface select| **NOT CONNECTED**  |
-  | black  | 5 GND     | ground          | phys 9 (GND)       |
+  | Wire   | SPS30 pin | Function         | Lands on Pi          |
+  | ------ | --------- | ---------------- | -------------------- |
+  | red    | 1 VDD     | 5V power         | phys 4 (5V)          |
+  | white  | 2 RX      | sensor input     | phys 7 (GPIO4/TXD3)  |
+  | purple | 3 TX      | sensor output    | phys 29 (GPIO5/RXD3) |
+  | teal   | 4 SEL     | interface select | **NOT CONNECTED**    |
+  | black  | 5 GND     | ground           | phys 9 (GND)         |
 
   SEL (teal) MUST stay disconnected. Floating = UART mode. Its absolute max is
   4.0V; putting 5V on it destroys the sensor. It should be taped off.
@@ -106,12 +107,12 @@ shifters are used anywhere in this build. Two sensors take 5V POWER but output
 - Header pins were soldered into 4 of the 7 holes: Vin, GND, Tx, Rx.
 - Wiring:
 
-  | Board pin | Lands on Pi         |
-  |-----------|---------------------|
-  | Vin       | phys 2 (5V)         |
-  | GND       | phys 6 (GND)        |
+  | Board pin | Lands on Pi           |
+  | --------- | --------------------- |
+  | Vin       | phys 2 (5V)           |
+  | GND       | phys 6 (GND)          |
   | Tx        | phys 10 (GPIO15/RXD0) |
-  | Rx        | phys 8  (GPIO14/TXD0) |
+  | Rx        | phys 8 (GPIO14/TXD0)  |
 
 - **Gotchas that produce silent bad data:**
   - ~3 minute warm-up after power-on. Readings before that are unreliable and
@@ -130,12 +131,12 @@ shifters are used anywhere in this build. Two sensors take 5V POWER but output
 - Power 3.3V. This board takes power from **phys 1 (3V3)**, NOT phys 2.
 - Wiring:
 
-  | Board pin | Lands on Pi        |
-  |-----------|--------------------|
-  | VIN       | phys 1 (3V3)       |
-  | GND       | phys 14 (GND)      |
-  | SDA       | phys 3 (GPIO2)     |
-  | SCL       | phys 5 (GPIO3)     |
+  | Board pin | Lands on Pi    |
+  | --------- | -------------- |
+  | VIN       | phys 1 (3V3)   |
+  | GND       | phys 14 (GND)  |
+  | SDA       | phys 3 (GPIO2) |
+  | SCL       | phys 5 (GPIO3) |
 
 - Header pins may not be soldered yet. Unsoldered pins cause intermittent I2C,
   which looks exactly like a software bug. If `i2cdetect` is flaky, suspect this first.
@@ -144,15 +145,18 @@ shifters are used anywhere in this build. Two sensors take 5V POWER but output
   corrupts PM compensation. Put it on a short lead away from the Pi and the SPS30 exhaust.
 
 ### Not used
+
 - BMP180 (pressure), BH1750 (light): both dropped. Irrelevant to air quality,
   and BMP180 has no maintained driver. Do not wire them.
 - ANAVI Infrared pHAT: set aside. Its UART header is 3.3V-only (can't power the
   MH-Z19B) and it has no fan-control hardware. Build on the Pi header directly.
 
 ### I2C address map (no conflicts)
+
 ```
 0x40  GY-21 (temp/humidity)   <- only device on the I2C bus
 ```
+
 Both PM and CO2 sensors are on UART, so the I2C bus has exactly one device.
 Cleanest possible bus. Do not add pull-up resistors; the Pi has them built in.
 
@@ -168,6 +172,7 @@ the current Pi and its serial-device mapping is captured in the memory file
 ### 4.1 Ensure interfaces are enabled
 
 Append to `/boot/firmware/config.txt` (idempotent; check before adding):
+
 ```ini
 # --- air quality monitor ---
 dtparam=i2c_arm=on
@@ -175,6 +180,7 @@ enable_uart=1
 dtoverlay=disable-bt   # frees the real PL011 UART0 onto GPIO14/15
 dtoverlay=uart3        # wakes the Pi 4's second UART on GPIO4/5
 ```
+
 Why `disable-bt`: without it, GPIO14/15 get the mini-UART whose baud rate drifts
 with CPU load, so the MH-Z19B works at idle and corrupts under load.
 
@@ -184,6 +190,7 @@ with CPU load, so the MH-Z19B works at idle and corrupts under load.
 and any `console=ttyAMA0,115200`. Keep `console=tty1`. Do not add a newline.
 
 Then:
+
 ```bash
 sudo systemctl disable --now hciuart 2>/dev/null || true
 sudo systemctl disable --now serial-getty@ttyAMA0.service 2>/dev/null || true
@@ -240,6 +247,7 @@ breaks on OS upgrades. The GY-21 and MH-Z19B protocols are trivial to hand-roll.
 
 The SPS30's SHDLC framing (byte-stuffing + checksum) is the one non-trivial one.
 Two acceptable options, pick after checking PyPI live for current maintenance:
+
 - Sensirion's own maintained UART driver package, if it installs cleanly without
   pulling in a large tree, OR
 - a hand-rolled SHDLC layer (well-specified below). Either is fine; state the choice.
@@ -249,12 +257,14 @@ Use a venv: `python3 -m venv .venv && . .venv/bin/activate`.
 ### 5.2 Protocol reference (so drivers don't guess)
 
 **MH-Z19B (9600 8N1):**
+
 - Read CO2 command (9 bytes): `FF 01 86 00 00 00 00 00 79`
-- Response (9 bytes): `FF 86 HI LO ...`; CO2 ppm = HI*256 + LO
+- Response (9 bytes): `FF 86 HI LO ...`; CO2 ppm = HI\*256 + LO
 - Checksum on a 9-byte frame: `0xFF - (sum bytes[1..8]) + 1`, compare to byte[8]. Reject frames that fail.
-- ABC off: `FF 01 79 00 00 00 00 00 86`   ABC on: `FF 01 79 A0 00 00 00 00 E6`
+- ABC off: `FF 01 79 00 00 00 00 00 86` ABC on: `FF 01 79 A0 00 00 00 00 E6`
 
 **SPS30 (115200 8N1, SHDLC):**
+
 - Frame: `7E ADR CMD LEN DATA... CHK 7E`, ADR=0x00.
 - Byte-stuff inside frame: 7E->7D 5E, 7D->7D 5D, 11->7D 31, 13->7D 33 (un-stuff on read).
 - CHK = bitwise-NOT of (LSB of sum of ADR,CMD,LEN,DATA).
@@ -265,9 +275,10 @@ Use a venv: `python3 -m venv .venv && . .venv/bin/activate`.
 - Sequence: open port -> Start Measurement -> poll Read Measured Values (~1 Hz) -> parse.
 
 **GY-21 / Si7021 / HTU21D / SHT21 (I2C 0x40):**
+
 - Soft reset 0xFE. Measure temp (no-hold) 0xF3; measure RH (no-hold) 0xF5.
 - Read 3 bytes (MSB, LSB, CRC); mask the low 2 status bits of the 16-bit word.
-- RH% = -6 + 125 * raw / 65536.  TempC = -46.85 + 175.72 * raw / 65536.
+- `RH% = -6 + 125 * raw / 65536`. `TempC = -46.85 + 175.72 * raw / 65536`.
 - No-hold mode needs a wait between command and read (temp ~11ms, RH ~15ms; be generous).
 - Formulas are identical for all three chips.
 
@@ -275,6 +286,7 @@ Use a venv: `python3 -m venv .venv && . .venv/bin/activate`.
 
 A dead-simple script that reads each sensor ONCE and prints raw values, so the
 operator can confirm wiring end-to-end before any real logic exists. It must:
+
 - Read device paths from config/env (the fe201000 / fe201600 mapping from Phase 4).
 - Read GY-21 temp + RH, MH-Z19B CO2, SPS30 all PM channels, once each.
 - Print raw values with labels. Fail loudly and specifically per sensor (which one,
@@ -287,6 +299,7 @@ operator confirms all three sensors return sane raw numbers.
 ### 5.4 Second deliverable: the agent
 
 Only after verify.py passes. Requirements:
+
 - **Read loop** at a configurable interval. Timestamp every reading in UTC ISO-8601.
 - **SQLite buffer**: persist every reading with a sent/unsent flag. This is the
   offline safety net; a reading is only marked sent after the server 2xx's.
@@ -302,6 +315,7 @@ Only after verify.py passes. Requirements:
 Repo is a monorepo. The Pi's runtime job stays narrow (read/timestamp/buffer/send),
 but the FastAPI server and the SPA live alongside it here so the JSON schema stays
 in one place:
+
 ```
 airmon/
   pi/
@@ -334,6 +348,7 @@ fields (pm1/pm25/pm4/pm10, co2_ppm + co2_warming flag, temp_c, rh_pct). The
 pydantic model in `server/app/schema.py` is the source of truth.
 
 ### 5.5 Known failure modes to check before blaming code
+
 - Flaky/absent 0x40 on i2cdetect -> unsoldered GY-21 header pins.
 - MH-Z19B garbage under load -> `disable-bt` overlay missing (mini-UART clock drift).
 - Serial device "busy"/echoes login noise -> serial console not fully removed from cmdline.txt.
@@ -366,12 +381,14 @@ well inside a 12V 2A adapter.
 
 **Controller.** ESP32 DevKit V1 (ESP-WROOM-32, CP2102 USB chip, micro-USB) at
 the purifier, running ESPHome over Wi-Fi. The ESPHome config goes in `purifier/`.
+
 - D25: PWM out, 25 kHz (the standard frequency for 4-pin PC fans).
 - D26: tach in.
 
 The Pi's own GPIO is not used for fan control.
 
 **Power.**
+
 - Fans: their own 12V 2A adapter, through a panel-mount barrel jack.
 - ESP32: a separate USB charger.
 - Grounds joined: the 12V adapter's negative and an ESP32 GND pin connect
@@ -408,15 +425,15 @@ The Pi's own GPIO is not used for fan control.
 
 ### 6.4 Steps and status
 
-| Step | What | Status |
-|------|------|--------|
-| 1  | Parts check | DONE 2026-10-24 |
-| 2  | ESP32 alone on Wi-Fi | DONE 2026-10-24 |
-| 2b | Own baseline ESPHome firmware over Wi-Fi, no pins configured | **NEXT** |
-| 3  | Measure fan PWM/tach idle voltages with a multimeter | waiting on parts |
-| 4  | Wire PWM + tach; ESP32 alone sets speed and reads RPM | |
-| 5  | Server: target-duty endpoint + noise-aware curve | |
-| 6  | Close the loop; test the fallback by cutting the Pi's network | |
+| Step | What                                                          | Status           |
+| ---- | ------------------------------------------------------------- | ---------------- |
+| 1    | Parts check                                                   | DONE 2026-10-24  |
+| 2    | ESP32 alone on Wi-Fi                                          | DONE 2026-10-24  |
+| 2b   | Own baseline ESPHome firmware over Wi-Fi, no pins configured  | **NEXT**         |
+| 3    | Measure fan PWM/tach idle voltages with a multimeter          | waiting on parts |
+| 4    | Wire PWM + tach; ESP32 alone sets speed and reads RPM         |                  |
+| 5    | Server: target-duty endpoint + noise-aware curve              |                  |
+| 6    | Close the loop; test the fallback by cutting the Pi's network |                  |
 
 Step 2 result: stock ESPHome Web firmware, 192.168.1.98 via DHCP (not
 reserved, so it can change), MAC 68:09:47:e0:d5:1c.
