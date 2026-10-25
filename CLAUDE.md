@@ -425,18 +425,19 @@ The Pi's own GPIO is not used for fan control.
 
 ### 6.4 Steps and status
 
-| Step | What                                                          | Status           |
-| ---- | ------------------------------------------------------------- | ---------------- |
-| 1    | Parts check                                                   | DONE 2026-10-24  |
-| 2    | ESP32 alone on Wi-Fi                                          | DONE 2026-10-24  |
-| 2b   | Own baseline ESPHome firmware over Wi-Fi, no pins configured  | **NEXT**         |
-| 3    | Measure fan PWM/tach idle voltages with a multimeter          | waiting on parts |
-| 4    | Wire PWM + tach; ESP32 alone sets speed and reads RPM         |                  |
-| 5    | Server: target-duty endpoint + noise-aware curve              |                  |
-| 6    | Close the loop; test the fallback by cutting the Pi's network |                  |
+| Step | What                                                          | Status                      |
+| ---- | ------------------------------------------------------------- | --------------------------- |
+| 1    | Parts check                                                   | DONE 2026-10-24             |
+| 2    | ESP32 alone on Wi-Fi                                          | DONE 2026-10-24             |
+| 2b   | Own baseline ESPHome firmware over Wi-Fi, no pins configured  | DONE 2026-10-25             |
+| 3    | Measure fan PWM/tach idle voltages with a multimeter          | **NEXT**, waiting on parts  |
+| 4    | Wire PWM + tach; ESP32 alone sets speed and reads RPM         |                             |
+| 5    | Server: target-duty endpoint + noise-aware curve              |                             |
+| 6    | Close the loop; test the fallback by cutting the Pi's network |                             |
 
-Step 2 result: stock ESPHome Web firmware, 192.168.1.98 via DHCP (not
-reserved, so it can change), MAC 68:09:47:e0:d5:1c.
+Board state: runs `purifier/purifier-b.yaml` (ESPHome 2026.9.1), hostname
+`purifier-b.local`, 192.168.1.98 via DHCP (not reserved, so it can change),
+MAC 68:09:47:e0:d5:1c. Updates go over Wi-Fi; see `purifier/README.md`.
 
 ### 6.5 Gotchas
 

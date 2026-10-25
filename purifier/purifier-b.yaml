@@ -1,0 +1,31 @@
+# Purifier B fan controller (CLAUDE.md, Phase 6).
+# Baseline: Wi-Fi, API, OTA only. No GPIO is configured yet.
+esphome:
+  name: purifier-b
+  friendly_name: Purifier B
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+logger:
+
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  # If the board can't join Wi-Fi, it opens this hotspot so new credentials
+  # can be set from a phone (captive portal at 192.168.4.1).
+  ap:
+    ssid: Purifier-B Fallback
+    password: !secret fallback_ap_password
+
+captive_portal:

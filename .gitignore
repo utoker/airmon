@@ -33,6 +33,11 @@ Thumbs.db
 .idea/
 *.swp
 
+# ESPHome (purifier firmware)
+purifier/secrets.yaml
+purifier/.esphome/
+purifier/.venv/
+
 # Claude Code local state
 .claude/scheduled_tasks.lock
 .claude/settings.local.json
