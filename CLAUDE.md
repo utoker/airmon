@@ -23,52 +23,41 @@ not need dumbing down.
 - **Flag anything that can damage the Pi or a sensor BEFORE running it, not after.**
 - Ask about parts on hand instead of assuming.
 - Style: no em dashes in prose.
+- If a decision changes something written in this file, update this file in
+  the same commit.
 
 ---
 
-## Current state (2026-07-18)
+## Where things live
 
-Phases 4 and 5 are done. The Pi has been sampling continuously since 2026-07-14
-and the FastAPI server + SPA are serving `https://airmon.utoker.com` behind
-Cloudflare through Caddy. The deployment orchestration lives in
-[utoker/homelab](https://github.com/utoker/homelab) (systemd units, Caddy,
-backups, DNS/DDNS). This repo owns app code; that repo owns "where and how it
-runs". Everything below is still accurate for hardware and protocols; the
-software sections describe what shipped, not a plan.
+The Pi runs the sensor agent and also hosts the FastAPI server + SPA at
+`https://airmon.utoker.com` (behind Cloudflare, through Caddy). Deployment
+orchestration (systemd units, Caddy, backups, DNS/DDNS, monitoring) lives in
+[utoker/homelab](https://github.com/utoker/homelab). This repo owns app code;
+that repo owns "where and how it runs".
 
-**Where data lives on the Pi** (single mount, `/srv/data` on a Samsung 860
-EVO 500 GB SSD):
-- `/srv/data/airmon/buffer.db`: Pi-side offline queue (agent process).
-- `/srv/data/airmon/server.db`: server-side storage-of-record (FastAPI process).
+**Data on the Pi** (single mount, `/srv/data` on a Samsung 860 EVO 500 GB SSD):
+- `/srv/data/airmon/buffer.db`: Pi-side offline queue (agent process, `AIRMON_BUFFER_DB`).
+- `/srv/data/airmon/server.db`: server-side storage-of-record (FastAPI process, `AIRMON_DB_PATH`).
 - `/srv/data/backups/`: nightly `server-*.db.gz` snapshots, mirrored to R2.
 
-Both databases are configured through env vars on the systemd units in the
-homelab repo (`AIRMON_BUFFER_DB`, `AIRMON_DB_PATH`). Nothing lives under
-`/home/umut/airmon-data/` any more.
+The env vars are set on the systemd units in the homelab repo. Nothing lives
+under `/home/umut/airmon-data/` any more.
 
-**Tiered downsampling** (shipped, in `server/app/rollup.py` +
-`server/app/maintenance.py`):
-- `readings` (raw 5s samples): kept 14 days
-  (`AIRMON_TIER_RAW_DAYS`, default 14).
-- `readings_minute` (per-minute aggregate): kept 90 days
-  (`AIRMON_TIER_MINUTE_DAYS`, default 90).
-- `readings_hour` (per-hour aggregate): kept forever.
+**Retention.** `server.db` keeps tiered raw/minute/hour tables
+(`AIRMON_TIER_RAW_DAYS`, `AIRMON_TIER_MINUTE_DAYS`); see
+[server/app/rollup.py](server/app/rollup.py) and [README.md](README.md) for the
+design. `buffer.db` drops only `sent=1` rows older than
+`AIRMON_BUFFER_RETENTION_DAYS`; `sent=0` rows are never touched, because they
+are the only durable copy while the network is down.
 
-The daily maintenance job rolls up raw into minute+hour buckets, verifies a
-random sample of aggregate rows against a fresh raw query, and only then
-prunes. If any sample mismatches, it refuses to prune that run. Hour storage
-is ~2.3 MB/year, so `server.db` settles near 100 MB long-term rather than
-growing unbounded. The single retention env var `AIRMON_SERVER_RETENTION_DAYS`
-that predated this design no longer exists; the two tier vars replace it.
+**`buffer.db` is deliberately NOT backed up.** Every row is duplicated into
+`server.db` on successful send, and the agent recreates an empty buffer on
+first start.
 
-`buffer.db` on the Pi has its own retention loop (`AIRMON_BUFFER_RETENTION_DAYS=7`)
-that drops rows where `sent=1`. Rows still marked `sent=0` are never touched;
-they are the only durable copy while the network is down. `buffer.db` is
-deliberately NOT backed up: every row is duplicated into `server.db` on
-successful send, and the agent recreates an empty buffer on first start.
-
-The web UI's time-range picker knows which tier to query for a given range,
-so a freshly restored `server.db` works without a rebuild step.
+**Monitoring.** A healthchecks.io dead-man's switch plus a persistent journal;
+see [docs/monitoring.md](https://github.com/utoker/homelab/blob/main/docs/monitoring.md)
+in the homelab repo.
 
 ---
 
@@ -169,24 +158,6 @@ Cleanest possible bus. Do not add pull-up resistors; the Pi has them built in.
 
 ---
 
-## Future phase (do NOT build yet, just don't design it out)
-
-A separate custom air purifier (PC fans + MERV-13) will eventually be driven by
-the Pi to ramp fan speed when PM is high. Reserved for that, keep free:
-- GPIO12 (phys 32), GPIO13 (phys 33): hardware PWM for 4-pin fans (25 kHz).
-- GPIO16 (phys 36): fan tach input.
-
-Hard rules for that future phase (state them when we get there):
-- PC fans are 12V. Never power them from the Pi. Separate 12V supply, common ground.
-- A fan's tach and PWM lines idle at 5V or 12V. Never wire them straight to a GPIO.
-  Measure idle voltage first; if above 3.3V, use a transistor/level shift.
-- The user's "Ransanx K11" hub is knob-controlled with no motherboard PWM input,
-  so the Pi cannot drive it. It will be replaced with a passive 4-pin PWM hub. Don't buy anything yet.
-- Policy (the PM-to-fan-speed curve) stays server-side and is handed to the Pi in
-  the POST response; the Pi only executes a cached curve so it still works offline.
-
----
-
 ## PHASE 4 — Pi OS setup and hardware verification (PASSED 2026-07-14)
 
 Kept here as the canonical bring-up procedure. If the SD card is ever wiped
@@ -257,8 +228,8 @@ lives at `pi/agent.py` with `pi/buffer.py`, `pi/config.py`, and the drivers
 under `pi/drivers/`. The server companion is `server/app/` with `main.py`,
 `schema.py`, `db.py`, `rollup.py`, `maintenance.py`. Systemd units are in
 the [utoker/homelab](https://github.com/utoker/homelab) repo. See the
-"Current state" section at the top for what shipped beyond the original
-plan.
+"Where things live" section at the top and README.md for what shipped
+beyond the original plan.
 
 ### 5.1 Driver approach
 
@@ -368,3 +339,90 @@ pydantic model in `server/app/schema.py` is the source of truth.
 - Serial device "busy"/echoes login noise -> serial console not fully removed from cmdline.txt.
 - Wrong ttyAMA number -> use the fe201000/fe201600 mapping, not the UART index.
 - SPS30 returns nothing -> SEL (teal) accidentally connected, or TX/RX swapped, or still in Idle (Start Measurement not sent).
+
+---
+
+## PHASE 6: Purifier fan control (IN PROGRESS)
+
+Goal: the server sets a DIY air purifier's fan speed from PM readings, through
+an ESP32 that sits at the purifier. Everything below is confirmed with Umut.
+
+### 6.1 Hardware
+
+**Purifiers.** Two DIY builds, each PC fans + a MERV-13 filter, each with
+3x ARCTIC P14 Pro PST fans daisy-chained via PST (a pass-through socket on
+each fan). One PWM wire drives all three fans; tach (the RPM signal) comes
+from the head fan only. The PST chain replaces the hub an earlier plan said
+to buy.
+
+Fan specs (each): 12V, 0.35 A / 4.2 W max, 400-2500 RPM, **0 RPM below 5%
+PWM duty** (the fans fully stop). Three fans draw ~1.05 A at full speed,
+well inside a 12V 2A adapter.
+
+- **Purifier A:** runs on a knob-controlled 4-pin PWM hub + 12V 2A adapter.
+  A knob hub has no input a computer can drive. Left as is for now; it gets
+  the same setup as B later, using a spare ESP32.
+- **Purifier B:** new, built for control from the start. **This phase targets B.**
+
+**Controller.** ESP32 DevKit V1 (ESP-WROOM-32, CP2102 USB chip, micro-USB) at
+the purifier, running ESPHome over Wi-Fi. The ESPHome config goes in `purifier/`.
+- D25: PWM out, 25 kHz (the standard frequency for 4-pin PC fans).
+- D26: tach in.
+
+The Pi's own GPIO is not used for fan control.
+
+**Power.**
+- Fans: their own 12V 2A adapter, through a panel-mount barrel jack.
+- ESP32: a separate USB charger.
+- Grounds joined: the 12V adapter's negative and an ESP32 GND pin connect
+  together. A signal voltage only means something relative to a ground, so
+  without this the fans cannot read the ESP32's PWM and the ESP32 cannot read
+  the tach.
+- All joins use Wago 221 lever connectors. No soldering.
+
+### 6.2 Hard safety rules (state these before any wiring step)
+
+- Never power fans from the Pi or the ESP32.
+- 12V never touches an ESP32 pin.
+- The 12V side and the ESP32 share a ground.
+- ESP32 pins are 3.3V max. Measure the fans' PWM and tach idle voltages with a
+  multimeter before wiring them to the ESP32.
+  - If PWM idles above 3.3V, drive it through a transistor (open-drain: the
+    ESP32 switches the transistor, the transistor pulls the fan's line to
+    ground, and the ESP32 pin never sees the fan's voltage).
+  - Tach only ever pulls its line low, so something must pull it high. Pull it
+    up to 3.3V, never higher.
+- Power the ESP32 from USB. Never feed 12V into VIN.
+- Never have the ESP32 plugged into a PC while the 12V wiring is attached.
+
+### 6.3 Control policy
+
+- Policy stays server-side. The server computes the target duty from PM, and
+  the ESP32 polls the server for it.
+- If the ESP32 cannot reach the server, it falls back to a **fixed** duty, not
+  a cached curve. The server and the PM sensors are on the same Pi, so no
+  server means no PM data for a curve to act on.
+- Noise: the room is occupied, so the curve has a quiet always-on floor
+  (~25%), never jumps straight to 100%, and treats anything under 5% as a
+  deliberate "off" (the fans stop there).
+
+### 6.4 Steps and status
+
+| Step | What | Status |
+|------|------|--------|
+| 1  | Parts check | DONE 2026-10-24 |
+| 2  | ESP32 alone on Wi-Fi | DONE 2026-10-24 |
+| 2b | Own baseline ESPHome firmware over Wi-Fi, no pins configured | **NEXT** |
+| 3  | Measure fan PWM/tach idle voltages with a multimeter | waiting on parts |
+| 4  | Wire PWM + tach; ESP32 alone sets speed and reads RPM | |
+| 5  | Server: target-duty endpoint + noise-aware curve | |
+| 6  | Close the loop; test the fallback by cutting the Pi's network | |
+
+Step 2 result: stock ESPHome Web firmware, 192.168.1.98 via DHCP (not
+reserved, so it can change), MAC 68:09:47:e0:d5:1c.
+
+### 6.5 Gotchas
+
+- On Windows, the board needs the Silicon Labs CP210x driver. Without it,
+  Chrome's port picker shows only the motherboard's COM1, which connects and
+  then stays silent.
