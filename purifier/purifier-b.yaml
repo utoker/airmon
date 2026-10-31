@@ -1,7 +1,6 @@
 # Purifier B fan controller (CLAUDE.md, Phase 6).
 # Drives the fans' PWM line from GPIO26 through a 2N2222A; speed is set from
 # the built-in web page. Tach is not configured yet.
-# GPIO26, not GPIO25: GPIO25 read 0V when it should have been held high.
 esphome:
   name: purifier-b
   friendly_name: Purifier B

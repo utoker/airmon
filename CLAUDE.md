@@ -384,8 +384,7 @@ the purifier, running ESPHome over Wi-Fi. The ESPHome config goes in `purifier/`
 
 - D26: PWM out, 25 kHz (the standard frequency for 4-pin PC fans).
 - D27: tach in (not wired yet).
-- D25: avoid. On this board it never drives (reads 0V when set high), so
-  PWM moved to D26 on 2026-10-31.
+- D25: unused; earlier "dead pin" reading was a ground fault, not the pin.
 
 The Pi's own GPIO is not used for fan control.
 
