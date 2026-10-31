@@ -418,8 +418,8 @@ The Pi's own GPIO is not used for fan control.
 
 - Policy stays server-side. The server computes the target duty from PM, and
   the ESP32 polls the server for it.
-- If the ESP32 cannot reach the server, it falls back to a **fixed** duty, not
-  a cached curve. The server and the PM sensors are on the same Pi, so no
+- If the ESP32 cannot reach the server, it falls back to a **fixed** duty
+  (40%), not a cached curve. The server and the PM sensors are on the same Pi, so no
   server means no PM data for a curve to act on.
 - Noise: the room is occupied, so the curve has a quiet always-on floor
   (25%), never jumps straight to 100%, and treats anything under 5% as a

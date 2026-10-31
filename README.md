@@ -202,8 +202,14 @@ The full wiring diagram, gotchas, and bring-up runbook live in
 
 ## Future work
 
-Reserved but not built: a custom PC-fan-plus-MERV-13 air purifier driven by
-the Pi. The fan curve is intentionally kept server-side and shipped to the
-Pi in the POST response, so the policy can change without a firmware push
-and the Pi still executes a cached curve when offline. GPIO12/13/16 are
-reserved for hardware PWM and tach.
+Closing the loop on two DIY air purifiers (PC fans plus a MERV-13 filter).
+An ESP32 at each purifier drives its fans over Wi-Fi and polls
+`GET /api/purifier/{name}/target` for the duty to run. The curve stays
+server-side, so the policy can change without a firmware push. If the ESP32
+can't reach the server, it runs a fixed 40% duty, not a cached curve: the
+server and the PM sensor share the Pi, so no server means no PM data for a
+curve to act on. The Pi's own GPIO isn't used for fan control.
+
+Built so far: purifier B's ESP32 sets fan speed from its own web page
+([purifier/](purifier/)), and the target endpoint above. The polling and the
+fallback are what's left.
