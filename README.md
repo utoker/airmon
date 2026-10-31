@@ -107,6 +107,8 @@ server/
   app/db.py                        SQLite connection + schema init
   app/rollup.py                    tiered aggregation, verify_bucket
   app/maintenance.py               daily rollup + verify + prune
+  app/purifier.py                  PM2.5 -> purifier fan duty curve
+  tests/                           pytest (requirements-dev.txt)
 web/
   src/{App,api}.tsx                React 19 + Recharts SPA
 CLAUDE.md                          project brief, phases, gotchas
@@ -124,6 +126,13 @@ cd server
 python3 -m venv .venv && . .venv/bin/activate
 pip install -r requirements.txt
 uvicorn app.main:app --reload
+```
+
+Server tests:
+```bash
+cd server
+pip install -r requirements-dev.txt
+pytest
 ```
 
 Web:
@@ -157,6 +166,24 @@ All runtime config is environment variables. The interesting ones:
 | `AIRMON_TIER_RAW_DAYS` | `14` | Retention for 5s samples |
 | `AIRMON_TIER_MINUTE_DAYS` | `90` | Retention for per-minute aggregates |
 | `AIRMON_BUFFER_RETENTION_DAYS` | `7` | Retention for sent rows in buffer.db |
+| `AIRMON_PURIFIER_FALLBACK_PCT` | `40` | Purifier fan duty when there is no recent PM2.5 |
+
+## Purifier fan target
+
+`GET /api/purifier/{a|b}/target` returns the fan duty a purifier's ESP32
+should run. It averages PM2.5 over the last 5 minutes and maps it through a
+piecewise-linear curve aimed at keeping PM2.5 under 1 ug/m3: 25% at or below
+0.5 ug/m3 (a quiet floor; "off" is manual), then 40% at 1, 60% at 2, 85% at 5,
+and 100% from 10 up. With no PM2.5 in the window it returns the fallback duty
+and `"reason": "stale"`.
+
+```json
+{"purifier": "b", "duty_pct": 60, "pm25_avg": 2.0, "n": 58,
+ "window_minutes": 5, "reason": "curve",
+ "computed_at": "2026-10-31T17:00:00.000000+00:00"}
+```
+
+Read-only and unauthenticated, like `GET /api/readings`.
 
 ## Hardware notes
 

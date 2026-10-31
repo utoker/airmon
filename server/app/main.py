@@ -1,12 +1,12 @@
 import os
 import sqlite3
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 
-from . import rollup
+from . import purifier, rollup
 from .db import connect, init_db
 from .schema import ReadingBatch
 
@@ -177,6 +177,35 @@ def get_readings(
         "bucket_seconds": bucket_s,
         "count": len(rows),
         "readings": [_row_to_response(r, table) for r in rows],
+    }
+
+
+@api.get("/purifier/{name}/target")
+def get_purifier_target(name: str) -> dict:
+    """Fan duty the purifier's ESP32 should run, from recent PM2.5.
+
+    Averages pm25 over the trailing window. No PM2.5 in the window means the
+    sensor or agent is down, so return the fixed fallback and say so.
+    """
+    if name not in purifier.PURIFIERS:
+        raise HTTPException(status_code=404, detail="unknown purifier")
+    now = datetime.now(timezone.utc)
+    # Same lexicographic comparison as db.prune_older_than: every captured_at
+    # carries the same +00:00 suffix.
+    cutoff = (now - timedelta(minutes=purifier.WINDOW_MINUTES)).isoformat()
+    with connect() as conn:
+        pm25_avg, n = conn.execute(
+            "SELECT AVG(pm25), COUNT(pm25) FROM readings WHERE captured_at >= ?",
+            (cutoff,),
+        ).fetchone()
+    return {
+        "purifier": name,
+        "duty_pct": purifier.target_pct(pm25_avg),
+        "pm25_avg": pm25_avg,
+        "n": n,
+        "window_minutes": purifier.WINDOW_MINUTES,
+        "reason": "curve" if pm25_avg is not None else "stale",
+        "computed_at": now.isoformat(),
     }
 
 

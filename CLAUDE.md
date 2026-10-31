@@ -327,7 +327,8 @@ airmon/
     config.py         # env/file config
     requirements.txt  # pyserial, smbus2
   server/
-    app/{main.py, schema.py, db.py, rollup.py, maintenance.py}
+    app/{main.py, schema.py, db.py, rollup.py, maintenance.py, purifier.py}
+    tests/            # pytest; requirements-dev.txt
     requirements.txt  # fastapi, uvicorn
   web/                # Vite + React + Recharts SPA
 ```
@@ -421,20 +422,31 @@ The Pi's own GPIO is not used for fan control.
   a cached curve. The server and the PM sensors are on the same Pi, so no
   server means no PM data for a curve to act on.
 - Noise: the room is occupied, so the curve has a quiet always-on floor
-  (~25%), never jumps straight to 100%, and treats anything under 5% as a
-  deliberate "off" (the fans stop there).
+  (25%), never jumps straight to 100%, and treats anything under 5% as a
+  deliberate "off" (the fans stop there). The curve never returns "off";
+  turning the fans off is manual.
+- Goal: keep PM2.5 below 1 ug/m3.
+- Curve ([server/app/purifier.py](server/app/purifier.py)): piecewise-linear
+  on the mean PM2.5 over the last **5 minutes**, through (PM2.5 ug/m3, duty %)
+  points (0.5, 25), (1, 40), (2, 60), (5, 85), (10, 100). At or below 0.5 it
+  holds at 25%; at or above 10 it holds at 100%.
+- No PM2.5 readings in the 5-minute window (sensor or agent down, server up):
+  the server returns a fallback of **40%** (`AIRMON_PURIFIER_FALLBACK_PCT`)
+  with `reason: "stale"`.
+- Endpoint: `GET /api/purifier/{a|b}/target`, read-only, no auth. Same curve
+  for both purifiers.
 
 ### 6.4 Steps and status
 
-| Step | What                                                          | Status                                      |
-| ---- | ------------------------------------------------------------- | ------------------------------------------- |
-| 1    | Parts check                                                   | DONE 2026-10-24                             |
-| 2    | ESP32 alone on Wi-Fi                                          | DONE 2026-10-24                             |
-| 2b   | Own baseline ESPHome firmware over Wi-Fi, no pins configured  | DONE 2026-10-25                             |
-| 3    | Measure fan PWM/tach idle voltages with a multimeter          | DONE 2026-10-27                             |
-| 4    | Wire PWM + tach; ESP32 alone sets speed and reads RPM         | DONE 2026-10-31 (speed only; tach deferred) |
-| 5    | Server: target-duty endpoint + noise-aware curve              |                                             |
-| 6    | Close the loop; test the fallback by cutting the Pi's network |                                             |
+| Step | What                                                          | Status                                         |
+| ---- | ------------------------------------------------------------- | ---------------------------------------------- |
+| 1    | Parts check                                                   | DONE 2026-10-24                                |
+| 2    | ESP32 alone on Wi-Fi                                          | DONE 2026-10-24                                |
+| 2b   | Own baseline ESPHome firmware over Wi-Fi, no pins configured  | DONE 2026-10-25                                |
+| 3    | Measure fan PWM/tach idle voltages with a multimeter          | DONE 2026-10-27                                |
+| 4    | Wire PWM + tach; ESP32 alone sets speed and reads RPM         | DONE 2026-10-31 (speed only; tach deferred)    |
+| 5    | Server: target-duty endpoint + noise-aware curve              | **IN PROGRESS** (endpoint built, not deployed) |
+| 6    | Close the loop; test the fallback by cutting the Pi's network |                                                |
 
 Board state: runs `purifier/purifier-b.yaml` (ESPHome 2026.9.1), hostname
 `purifier-b.local`, 192.168.1.98 via DHCP (not reserved, so it can change),
