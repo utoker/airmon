@@ -1,7 +1,7 @@
 # purifier
 
 ESPHome firmware for the purifier fan controllers (CLAUDE.md, Phase 6).
-`purifier-b.yaml` sets fan speed (PWM on GPIO25) from a built-in web page.
+`purifier-b.yaml` sets fan speed (PWM on GPIO26) from a built-in web page.
 Tach (RPM) is not configured yet.
 
 All commands run from this directory.

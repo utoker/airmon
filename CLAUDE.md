@@ -382,8 +382,10 @@ well inside a 12V 2A adapter.
 **Controller.** ESP32 DevKit V1 (ESP-WROOM-32, CP2102 USB chip, micro-USB) at
 the purifier, running ESPHome over Wi-Fi. The ESPHome config goes in `purifier/`.
 
-- D25: PWM out, 25 kHz (the standard frequency for 4-pin PC fans).
-- D26: tach in.
+- D26: PWM out, 25 kHz (the standard frequency for 4-pin PC fans).
+- D27: tach in (not wired yet).
+- D25: avoid. On this board it never drives (reads 0V when set high), so
+  PWM moved to D26 on 2026-10-31.
 
 The Pi's own GPIO is not used for fan control.
 
@@ -431,7 +433,7 @@ The Pi's own GPIO is not used for fan control.
 | 2    | ESP32 alone on Wi-Fi                                          | DONE 2026-10-24                             |
 | 2b   | Own baseline ESPHome firmware over Wi-Fi, no pins configured  | DONE 2026-10-25                             |
 | 3    | Measure fan PWM/tach idle voltages with a multimeter          | DONE 2026-10-27                             |
-| 4    | Wire PWM + tach; ESP32 alone sets speed and reads RPM         | **IN PROGRESS** (speed only, tach deferred) |
+| 4    | Wire PWM + tach; ESP32 alone sets speed and reads RPM         | DONE 2026-10-31 (speed only; tach deferred) |
 | 5    | Server: target-duty endpoint + noise-aware curve              |                                             |
 | 6    | Close the loop; test the fallback by cutting the Pi's network |                                             |
 
