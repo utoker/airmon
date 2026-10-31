@@ -1,8 +1,11 @@
 # purifier
 
 ESPHome firmware for the purifier fan controllers (CLAUDE.md, Phase 6).
-`purifier-b.yaml` sets fan speed (PWM on GPIO26) from a built-in web page.
-Tach (RPM) is not configured yet.
+`purifier-b.yaml` drives the fans (PWM on GPIO26) and follows the airmon
+server: every 30 s it fetches a target duty and ramps toward it, at most 10
+points per poll. After 4 failed polls in a row (~2 min) it ramps toward a
+fixed 40% fallback instead. It boots at 40% and holds that until the first good
+poll. Tach (RPM) is not configured yet.
 
 All commands run from this directory.
 
@@ -45,8 +48,14 @@ ssh airmon getent hosts purifier-b.local
 Open `http://<ip>/` in a browser on the home network. The **Fans** row has an
 on/off toggle and a speed slider (1-100%). The fans stop below 5%.
 
-On a freshly flashed board the page can show Fans ON at speed 0, which means
-stopped. Move the slider; the speed you set survives reboots.
+The page also shows **Control** (`server` while polls succeed, `fallback`
+before the first good poll and after 4 failures in a row) and **Target %**
+(the duty the fans are ramping toward).
+
+**Manual changes don't stick.** The next poll, within 30 s, ramps the fans
+from wherever you left them back toward the target, and that includes turning
+them off. To hold a speed by hand, install firmware without the `interval:`
+block.
 
 ## Logs
 

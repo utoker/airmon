@@ -417,10 +417,17 @@ The Pi's own GPIO is not used for fan control.
 ### 6.3 Control policy
 
 - Policy stays server-side. The server computes the target duty from PM, and
-  the ESP32 polls the server for it.
+  the ESP32 polls the server for it every 30 s at
+  `http://192.168.1.15:8081/api/purifier/b/target` (Caddy's LAN-only HTTP
+  listener, set up in the homelab repo).
+- The ESP32 ramps toward the target by at most 10 points per poll, in either
+  direction. It boots at the fallback duty and holds it until the first good
+  poll.
 - If the ESP32 cannot reach the server, it falls back to a **fixed** duty
   (40%), not a cached curve. The server and the PM sensors are on the same Pi, so no
-  server means no PM data for a curve to act on.
+  server means no PM data for a curve to act on. It falls back after 4 failed
+  polls in a row (~2 min: error, non-200, or bad JSON); until then it holds
+  its current speed.
 - Noise: the room is occupied, so the curve has a quiet always-on floor
   (25%), never jumps straight to 100%, and treats anything under 5% as a
   deliberate "off" (the fans stop there). The curve never returns "off";
@@ -438,15 +445,15 @@ The Pi's own GPIO is not used for fan control.
 
 ### 6.4 Steps and status
 
-| Step | What                                                          | Status                                         |
-| ---- | ------------------------------------------------------------- | ---------------------------------------------- |
-| 1    | Parts check                                                   | DONE 2026-10-24                                |
-| 2    | ESP32 alone on Wi-Fi                                          | DONE 2026-10-24                                |
-| 2b   | Own baseline ESPHome firmware over Wi-Fi, no pins configured  | DONE 2026-10-25                                |
-| 3    | Measure fan PWM/tach idle voltages with a multimeter          | DONE 2026-10-27                                |
-| 4    | Wire PWM + tach; ESP32 alone sets speed and reads RPM         | DONE 2026-10-31 (speed only; tach deferred)    |
-| 5    | Server: target-duty endpoint + noise-aware curve              | **IN PROGRESS** (endpoint built, not deployed) |
-| 6    | Close the loop; test the fallback by cutting the Pi's network |                                                |
+| Step | What                                                          | Status                                                |
+| ---- | ------------------------------------------------------------- | ----------------------------------------------------- |
+| 1    | Parts check                                                   | DONE 2026-10-24                                       |
+| 2    | ESP32 alone on Wi-Fi                                          | DONE 2026-10-24                                       |
+| 2b   | Own baseline ESPHome firmware over Wi-Fi, no pins configured  | DONE 2026-10-25                                       |
+| 3    | Measure fan PWM/tach idle voltages with a multimeter          | DONE 2026-10-27                                       |
+| 4    | Wire PWM + tach; ESP32 alone sets speed and reads RPM         | DONE 2026-10-31 (speed only; tach deferred)           |
+| 5    | Server: target-duty endpoint + noise-aware curve              | DONE 2026-10-31 (deployed)                            |
+| 6    | Close the loop; test the fallback by cutting the Pi's network | **IN PROGRESS** (polling live, fallback test pending) |
 
 Board state: runs `purifier/purifier-b.yaml` (ESPHome 2026.9.1), hostname
 `purifier-b.local`, 192.168.1.98 via DHCP (not reserved, so it can change),
