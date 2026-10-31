@@ -1,5 +1,6 @@
 # Purifier B fan controller (CLAUDE.md, Phase 6).
-# Baseline: Wi-Fi, API, OTA only. No GPIO is configured yet.
+# Drives the fans' PWM line from GPIO25 through a 2N2222A; speed is set from
+# the built-in web page. Tach (GPIO26) is not configured yet.
 esphome:
   name: purifier-b
   friendly_name: Purifier B
@@ -29,3 +30,28 @@ wifi:
     password: !secret fallback_ap_password
 
 captive_portal:
+
+# Speed control page at http://<ip>/. local: true bundles the page's JS/CSS
+# into the firmware, so it works with no internet.
+web_server:
+  port: 80
+  version: 3
+  local: true
+
+output:
+  # 25 kHz is the standard PWM frequency for 4-pin PC fans. The transistor
+  # inverts (GPIO high pulls the fan's PWM line low), so inverted: true makes
+  # level 100% mean full speed.
+  - platform: ledc
+    pin: GPIO25
+    frequency: 25000 Hz
+    inverted: true
+    id: fan_pwm
+
+fan:
+  # The fans stop below 5% duty.
+  - platform: speed
+    output: fan_pwm
+    name: "Fans"
+    speed_count: 100
+    restore_mode: RESTORE_DEFAULT_ON

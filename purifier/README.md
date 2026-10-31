@@ -1,7 +1,8 @@
 # purifier
 
 ESPHome firmware for the purifier fan controllers (CLAUDE.md, Phase 6).
-`purifier-b.yaml` is a baseline today: Wi-Fi, API, OTA, no GPIO configured.
+`purifier-b.yaml` sets fan speed (PWM on GPIO25) from a built-in web page.
+Tach (RPM) is not configured yet.
 
 All commands run from this directory.
 
@@ -38,6 +39,14 @@ find the IP, ask the Pi:
 ```bash
 ssh airmon getent hosts purifier-b.local
 ```
+
+## Test the fans
+
+Open `http://<ip>/` in a browser on the home network. The **Fans** row has an
+on/off toggle and a speed slider (1-100%). The fans stop below 5%.
+
+On a freshly flashed board the page can show Fans ON at speed 0, which means
+stopped. Move the slider; the speed you set survives reboots.
 
 ## Logs
 
