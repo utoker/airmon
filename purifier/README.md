@@ -5,7 +5,8 @@ ESPHome firmware for the purifier fan controllers (CLAUDE.md, Phase 6).
 server: every 30 s it fetches a target duty and ramps toward it, at most 10
 points per poll. After 4 failed polls in a row (~2 min) it ramps toward a
 fixed 40% fallback instead. It boots at 40% and holds that until the first good
-poll. Tach (RPM) is not configured yet.
+poll. It also reads the head fan's tach (GPIO33, internal pull-up) and
+reports fan RPM.
 
 All commands run from this directory.
 
@@ -50,7 +51,8 @@ on/off toggle and a speed slider (1-100%). The fans stop below 5%.
 
 The page also shows **Control** (`server` while polls succeed, `fallback`
 before the first good poll and after 4 failures in a row) and **Target %**
-(the duty the fans are ramping toward).
+(the duty the fans are ramping toward), and **Fan RPM** (the head fan's
+speed, updated every 10 s; roughly 400-2500 RPM, 0 when the fans are stopped).
 
 **Manual changes don't stick.** The next poll, within 30 s, ramps the fans
 from wherever you left them back toward the target, and that includes turning
