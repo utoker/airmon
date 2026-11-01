@@ -453,7 +453,7 @@ The Pi's own GPIO is not used for fan control.
 | 3    | Measure fan PWM/tach idle voltages with a multimeter          | DONE 2026-10-27                                       |
 | 4    | Wire PWM + tach; ESP32 alone sets speed and reads RPM         | DONE 2026-10-31 (speed only; tach deferred)           |
 | 5    | Server: target-duty endpoint + noise-aware curve              | DONE 2026-10-31 (deployed)                            |
-| 6    | Close the loop; test the fallback by cutting the Pi's network | **IN PROGRESS** (polling live, fallback test pending) |
+| 6    | Close the loop; test the fallback by cutting the Pi's network | DONE 2026-10-31 (fallback tested by blocking :8081)   |
 
 Board state: runs `purifier/purifier-b.yaml` (ESPHome 2026.9.1), hostname
 `purifier-b.local`, 192.168.1.98 via DHCP (not reserved, so it can change),
@@ -464,3 +464,10 @@ MAC 68:09:47:e0:d5:1c. Updates go over Wi-Fi; see `purifier/README.md`.
 - On Windows, the board needs the Silicon Labs CP210x driver. Without it,
   Chrome's port picker shows only the motherboard's COM1, which connects and
   then stays silent.
+- To test the fallback, don't take the Pi off the network: that cuts SSH,
+  the public sites, and LAN DNS (AdGuard). Drop just the ESP32's traffic to
+  :8081 instead, which looks the same to the ESP32 (each poll times out):
+  `sudo ufw insert 1 deny from <esp32-ip> to any port 8081 proto tcp`, then
+  `sudo ufw delete deny from <esp32-ip> to any port 8081 proto tcp`.
+  Expect 4 `Poll failed` lines (~2 min), Control `fallback`, a ramp toward
+  40%, and Control `server` within 30 s of removing the rule.
