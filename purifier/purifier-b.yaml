@@ -1,7 +1,8 @@
 # Purifier B fan controller (CLAUDE.md, Phase 6).
 # Drives the fans' PWM line from GPIO26 through a 2N2222A. Every 30 s it asks
 # the airmon server for a target duty and ramps toward it; if the server stays
-# unreachable it ramps toward a fixed fallback. Tach is not configured yet.
+# unreachable it ramps toward a fixed fallback. Reads the head fan's tach on
+# GPIO33.
 substitutions:
   # Caddy's LAN-only plain-HTTP listener on the Pi (homelab repo).
   target_url: http://192.168.1.15:8081/api/purifier/b/target
@@ -94,6 +95,22 @@ sensor:
     unit_of_measurement: "%"
     accuracy_decimals: 0
     update_interval: never
+
+  # The head fan's tach is open-collector with no pull-up of its own, so the
+  # ESP32's internal pull-up holds the line at 3.3V. The fan gives 2 pulses
+  # per revolution and pulse_counter reports pulses per minute, so x0.5 = RPM.
+  - platform: pulse_counter
+    pin:
+      number: GPIO33
+      mode:
+        input: true
+        pullup: true
+    name: "Fan RPM"
+    unit_of_measurement: "RPM"
+    accuracy_decimals: 0
+    update_interval: 10s
+    filters:
+      - multiply: 0.5
 
 globals:
   # Failed polls in a row.
