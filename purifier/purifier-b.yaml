@@ -1,9 +1,30 @@
 # Purifier B fan controller (CLAUDE.md, Phase 6).
-# Drives the fans' PWM line from GPIO26 through a 2N2222A; speed is set from
-# the built-in web page. Tach is not configured yet.
+# Drives the fans' PWM line from GPIO26 through a 2N2222A. Every 30 s it asks
+# the airmon server for a target duty and ramps toward it; if the server stays
+# unreachable it ramps toward a fixed fallback. Tach is not configured yet.
+substitutions:
+  # Caddy's LAN-only plain-HTTP listener on the Pi (homelab repo).
+  target_url: http://192.168.1.15:8081/api/purifier/b/target
+  fallback_pct: "40"
+
 esphome:
   name: purifier-b
   friendly_name: Purifier B
+  on_boot:
+    # Late priority so this runs after the fan restores its saved state.
+    # Run the fallback until the first good poll. This also covers a fresh
+    # flash, where the fan would otherwise restore as ON at speed 0.
+    priority: -100
+    then:
+      - fan.turn_on:
+          id: fans
+          speed: ${fallback_pct}
+      - text_sensor.template.publish:
+          id: control
+          state: fallback
+      - sensor.template.publish:
+          id: target_pct
+          state: ${fallback_pct}
 
 esp32:
   board: esp32dev
@@ -51,7 +72,99 @@ output:
 fan:
   # The fans stop below 5% duty.
   - platform: speed
+    id: fans
     output: fan_pwm
     name: "Fans"
     speed_count: 100
     restore_mode: RESTORE_DEFAULT_ON
+
+text_sensor:
+  # "server" while polls succeed, "fallback" from boot until the first good
+  # poll and after 4 failed polls in a row.
+  - platform: template
+    id: control
+    name: "Control"
+    update_interval: never
+
+sensor:
+  # The duty the fans are ramping toward.
+  - platform: template
+    id: target_pct
+    name: "Target %"
+    unit_of_measurement: "%"
+    accuracy_decimals: 0
+    update_interval: never
+
+globals:
+  # Failed polls in a row.
+  - id: failures
+    type: int
+    initial_value: "0"
+
+http_request:
+  timeout: 5s
+  # A request blocks the main loop, and the ESP32's task watchdog fires at
+  # 5 s. Raise it during requests so a timeout to an unreachable Pi counts
+  # as a failed poll instead of rebooting the board.
+  watchdog_timeout: 10s
+
+interval:
+  - interval: 30s
+    then:
+      - http_request.get:
+          url: ${target_url}
+          capture_response: true
+          on_response:
+            then:
+              - lambda: |-
+                  int duty = -1;
+                  if (response->status_code == 200) {
+                    json::parse_json(body, [&duty](JsonObject root) -> bool {
+                      if (!root["duty_pct"].is<int>())
+                        return false;
+                      duty = root["duty_pct"].as<int>();
+                      return true;
+                    });
+                  }
+                  if (duty < 0 || duty > 100) {
+                    ESP_LOGW("purifier", "Bad reply: HTTP %d, body: %.80s",
+                             response->status_code, body.c_str());
+                    id(poll_failed).execute();
+                    return;
+                  }
+                  id(failures) = 0;
+                  id(control).publish_state("server");
+                  id(ramp_toward).execute(duty);
+          on_error:
+            then:
+              - script.execute: poll_failed
+
+script:
+  # Move the fans toward `target` by at most 10 points per call (one call per
+  # 30 s poll), so speed never jumps straight to 100% (CLAUDE.md 6.3).
+  - id: ramp_toward
+    parameters:
+      target: int
+    then:
+      - lambda: |-
+          id(target_pct).publish_state(target);
+          int current = id(fans).state ? id(fans).speed : 0;
+          int next = current + std::clamp(target - current, -10, 10);
+          ESP_LOGI("purifier", "Target %d%%, speed %d%% -> %d%%", target, current, next);
+          if (id(fans).state && next == current)
+            return;
+          auto call = id(fans).turn_on();
+          call.set_speed(next);
+          call.perform();
+
+  # Runs on every failed poll. After 4 in a row (~2 min), ramp toward the
+  # fixed fallback; until then, hold the current speed.
+  - id: poll_failed
+    then:
+      - lambda: |-
+          id(failures) += 1;
+          ESP_LOGW("purifier", "Poll failed (%d in a row)", id(failures));
+          if (id(failures) < 4)
+            return;
+          id(control).publish_state("fallback");
+          id(ramp_toward).execute(${fallback_pct});
