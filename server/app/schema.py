@@ -3,6 +3,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from .purifier import MAX_BOOST_MINUTES
+
 
 class Reading(BaseModel):
     id: UUID
@@ -19,3 +21,8 @@ class Reading(BaseModel):
 
 class ReadingBatch(BaseModel):
     readings: list[Reading] = Field(min_length=1)
+
+
+class PurifierBoost(BaseModel):
+    # 0 clears the boost.
+    minutes: int = Field(ge=0, le=MAX_BOOST_MINUTES)

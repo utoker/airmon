@@ -432,6 +432,11 @@ well inside a 12V 2A adapter.
   A knob hub has no input a computer can drive. Left as is for now; it gets
   the same setup as B later, using a spare ESP32.
 - **Purifier B:** new, built for control from the start. **This phase targets B.**
+  Its filter is MERV-13 with a carbon layer.
+
+**Placement.** Purifier B, the Pi with all three sensors, and the cats'
+Litter-Robot 5 share the bedroom. Purifier A is in the living/work room, so
+the PM readings, and any curve built on them, describe the bedroom only.
 
 **Controller.** ESP32 DevKit V1 (ESP-WROOM-32, CP2102 USB chip, micro-USB) at
 the purifier, running ESPHome over Wi-Fi. The ESPHome config goes in `purifier/`.
@@ -471,8 +476,8 @@ The Pi's own GPIO is not used for fan control.
 
 ### 6.3 Control policy
 
-- Policy stays server-side. The server computes the target duty from PM, and
-  the ESP32 polls the server for it every 30 s at
+- Policy stays server-side. The server computes the target duty from PM and
+  Litter-Robot visits, and the ESP32 polls the server for it every 30 s at
   `http://192.168.1.15:8081/api/purifier/b/target` (Caddy's LAN-only HTTP
   listener, set up in the homelab repo).
 - The ESP32 ramps toward the target by at most 10 points per poll, in either
@@ -495,8 +500,22 @@ The Pi's own GPIO is not used for fan control.
 - No PM2.5 readings in the 5-minute window (sensor or agent down, server up):
   the server returns a fallback of **40%** (`AIRMON_PURIFIER_FALLBACK_PCT`)
   with `reason: "stale"`.
-- Endpoint: `GET /api/purifier/{a|b}/target`, read-only, no auth. Same curve
-  for both purifiers.
+- Litter-Robot boost: litter smell is gas, which the SPS30 can't see (PM2.5
+  stayed flat or fell after 5 of 6 cat visits on 2026-11-10), so Home
+  Assistant reports the visit instead. Its `litter_boost.yaml` package in the
+  homelab repo POSTs `{"minutes": 30}` when the Litter-Robot's status turns
+  `cst` (cat in), and `{"minutes": 10}` when it returns to `rdy` after the
+  clean cycle. Each POST replaces the running boost rather than extending it;
+  0 clears it.
+- While a boost runs, the target is **100%**, or **70%** from 23:00 to 07:00
+  local time because the purifier shares the bedroom, with `reason: "boost"`.
+  A boost never lowers the duty, so a PM spike still goes past 70% at night. The ESP32's normal ramp gets there (about 4 minutes from
+  the floor), so the target still never jumps straight to 100%.
+- Boosts live in server memory (uvicorn runs one worker). A server restart
+  drops a boost and the curve takes over.
+- Endpoints: `GET /api/purifier/{a|b}/target`, no auth, same curve for both
+  purifiers. `POST /api/purifier/{a|b}/boost`, reachable only on loopback:
+  Caddy rejects POST on the public site and on :8081.
 
 ### 6.4 Steps and status
 
@@ -509,6 +528,7 @@ The Pi's own GPIO is not used for fan control.
 | 4    | Wire PWM + tach; ESP32 alone sets speed and reads RPM         | DONE 2026-10-31 (speed); tach DONE 2026-11-01         |
 | 5    | Server: target-duty endpoint + noise-aware curve              | DONE 2026-10-31 (deployed)                            |
 | 6    | Close the loop; test the fallback by cutting the Pi's network | DONE 2026-10-31 (fallback tested by blocking :8081)   |
+| 7    | Boost B on Litter-Robot visits, triggered by Home Assistant   | BUILT 2026-11-10, not deployed                        |
 
 Board state: runs `purifier/purifier-b.yaml` (ESPHome 2026.9.1), hostname
 `purifier-b.local`, 192.168.1.98 via DHCP (not reserved, so it can change),
