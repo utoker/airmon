@@ -528,7 +528,7 @@ The Pi's own GPIO is not used for fan control.
 | 4    | Wire PWM + tach; ESP32 alone sets speed and reads RPM         | DONE 2026-10-31 (speed); tach DONE 2026-11-01         |
 | 5    | Server: target-duty endpoint + noise-aware curve              | DONE 2026-10-31 (deployed)                            |
 | 6    | Close the loop; test the fallback by cutting the Pi's network | DONE 2026-10-31 (fallback tested by blocking :8081)   |
-| 7    | Boost B on Litter-Robot visits, triggered by Home Assistant   | BUILT 2026-11-10, not deployed                        |
+| 7    | Boost B on Litter-Robot visits, triggered by Home Assistant   | DONE 2026-11-10 (deployed; real visit untested)       |
 
 Board state: runs `purifier/purifier-b.yaml` (ESPHome 2026.9.1), hostname
 `purifier-b.local`, 192.168.1.98 via DHCP (not reserved, so it can change),
