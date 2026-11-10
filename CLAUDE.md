@@ -62,15 +62,66 @@ in the homelab repo.
 
 ---
 
-## Hardware (wired and verified 2026-07-14)
+## Hardware (wired 2026-07-14, moved onto a screw-terminal HAT 2026-11-05)
 
-The Pi is a **Raspberry Pi 4 Model B**. OS is **Raspberry Pi OS Lite 64-bit**
-(Debian Trixie). Boot config lives at **`/boot/firmware/config.txt`** and
-**`/boot/firmware/cmdline.txt`** (NOT `/boot/`, that path is stale).
+The Pi is a **Raspberry Pi 4 Model B** with 2 GB of RAM. OS is **Raspberry Pi
+OS Lite 64-bit** (Debian Trixie). Boot config lives at
+**`/boot/firmware/config.txt`** and **`/boot/firmware/cmdline.txt`** (NOT
+`/boot/`, that path is stale).
 
 Three sensors. All data lines are 3.3V and safe on the Pi's GPIO. No level
 shifters are used anywhere in this build. Two sensors take 5V POWER but output
 3.3V LOGIC (verified against datasheets, see below).
+
+### Screw-terminal HAT
+
+Every sensor wire is clamped in an **HCDC RPi GPIO Terminal Block Breakout
+HAT** (model D-1297, the version without per-pin LEDs) on the Pi's 40-pin
+header. It brings each header pin out to a labeled 3.5 mm screw terminal
+(26-16 AWG). There are no ferrules. Each wire is stripped about 10 mm,
+twisted, folded back to 5 mm and clamped snug. The SPS30's own cable runs
+straight into the terminals, with no extension jumpers or mid-air joints.
+
+- Labels use BCM GPIO names (`IO4` is GPIO4). They're written from the Pi's
+  side, so a sensor's TX goes into the Pi's `RXD` terminal.
+- There are four blocks of ten, each starting with a power pair. Each sensor
+  has its own pair, so no terminal holds two wires:
+  - IO17 block: `3V3 GND IO17 IO18 MOSI MISO SCLK CE0 CE1 GND`
+  - TXD block: `3V3 GND TXD RXD IO24 IO25 IO5 IO6 IO16 GND`
+  - IO23 block: `5V GND IO23 IO22 IDSD IDSC IO12 IO20 IO19 GND`
+  - SDA block: `5V GND SDA SCL IO4 IO27 IO21 IO13 IO26 GND`
+- The Pi's header pins stick up through the HAT and stay live. Wire only with
+  the power off: a screwdriver slipping across them can short 5V onto a GPIO.
+- Terminals are 3.5 mm apart, and 5V sits next to GND. After clamping, no bare
+  copper may show outside a terminal.
+- Still to do: mount everything on one base board (about 9x12 in), with velcro
+  for the parts and zip-tie strain relief for the wire bundle near the HAT.
+
+### Power: PiPower UPS
+
+The Pi sits on a **SunFounder PiPower**. It's the original model, hardware V3,
+documented at docs.sunfounder.com/projects/pipower-v2. It is not the newer
+HAT-style "PiPower 3". The stack, bottom up: acrylic plate, PiPower with its
+7.4V 2000 mAh battery pack, the Pi, then the terminal HAT.
+
+- Power path: the official Raspberry Pi 15W supply (5.1V 3A) goes into the
+  PiPower's USB-C input. The PiPower's USB-A output goes to the Pi's USB-C.
+- While mains power is present, the output passes straight through and the
+  battery charges at under 1W, so a full charge takes most of a day. Per its
+  docs and a CNX Software review, it switches to battery on mains loss without
+  rebooting the Pi. The review measured 3-5 h of runtime. Neither has been
+  tested here with a charged battery yet.
+- The battery can run the Pi on its own. For wiring work, switch the PiPower
+  OFF as well as unplugging the supply.
+- **Not done yet: low-battery shutdown.** The PiPower's IO holes are
+  unsoldered, so the Pi can't see a low battery, and a long outage still ends
+  in a hard power cut. The plan:
+  - measure the signal voltage first, because the docs don't say 3.3V or 5V
+  - wire IN_DT to `IO17`, LO_DT to `IO27` and GND to `GND`
+  - add `dtoverlay=gpio-shutdown` on GPIO27
+
+  After a low-battery shutdown, the Pi likely stays halted if mains returns
+  before the battery runs flat. Toggle the PiPower switch to restart it.
 
 ### Sensor 1 — Sensirion SPS30 (particulate matter) — PRIMARY
 
@@ -86,13 +137,13 @@ shifters are used anywhere in this build. Two sensors take 5V POWER but output
 - The 5-wire cable that shipped with it, decoded from the connector
   (red and black at opposite ends confirm orientation):
 
-  | Wire   | SPS30 pin | Function         | Lands on Pi          |
-  | ------ | --------- | ---------------- | -------------------- |
-  | red    | 1 VDD     | 5V power         | phys 4 (5V)          |
-  | white  | 2 RX      | sensor input     | phys 7 (GPIO4/TXD3)  |
-  | purple | 3 TX      | sensor output    | phys 29 (GPIO5/RXD3) |
-  | teal   | 4 SEL     | interface select | **NOT CONNECTED**    |
-  | black  | 5 GND     | ground           | phys 9 (GND)         |
+  | Wire   | SPS30 pin | Function         | HAT terminal                  |
+  | ------ | --------- | ---------------- | ----------------------------- |
+  | red    | 1 VDD     | 5V power         | `5V`, SDA block               |
+  | white  | 2 RX      | sensor input     | `IO4` (GPIO4/TXD3, phys 7)    |
+  | purple | 3 TX      | sensor output    | `IO5` (GPIO5/RXD3, phys 29)   |
+  | teal   | 4 SEL     | interface select | **NOT CONNECTED**             |
+  | black  | 5 GND     | ground           | `GND`, SDA block              |
 
   SEL (teal) MUST stay disconnected. Floating = UART mode. Its absolute max is
   4.0V; putting 5V on it destroys the sensor. It should be taped off.
@@ -107,12 +158,12 @@ shifters are used anywhere in this build. Two sensors take 5V POWER but output
 - Header pins were soldered into 4 of the 7 holes: Vin, GND, Tx, Rx.
 - Wiring:
 
-  | Board pin | Lands on Pi           |
-  | --------- | --------------------- |
-  | Vin       | phys 2 (5V)           |
-  | GND       | phys 6 (GND)          |
-  | Tx        | phys 10 (GPIO15/RXD0) |
-  | Rx        | phys 8 (GPIO14/TXD0)  |
+  | Board pin | HAT terminal                   |
+  | --------- | ------------------------------ |
+  | Vin       | `5V`, IO23 block               |
+  | GND       | `GND`, IO23 block              |
+  | Tx        | `RXD` (GPIO15/RXD0, phys 10)   |
+  | Rx        | `TXD` (GPIO14/TXD0, phys 8)    |
 
 - **Gotchas that produce silent bad data:**
   - ~3 minute warm-up after power-on. Readings before that are unreliable and
@@ -128,18 +179,19 @@ shifters are used anywhere in this build. Two sensors take 5V POWER but output
   driver does NOT need to branch on chip type. Identifying the exact chip (via its
   electronic serial number) is a nice-to-have for logging only, not required.
 - **Interface: I2C** bus 1: GPIO2 SDA (phys 3), GPIO3 SCL (phys 5).
-- Power 3.3V. This board takes power from **phys 1 (3V3)**, NOT phys 2.
+- Power 3.3V. This board takes power from a **`3V3`** terminal, NEVER a `5V`
+  one: on 5V its pull-ups can push 5V into the Pi's SDA/SCL pins.
 - Wiring:
 
-  | Board pin | Lands on Pi    |
-  | --------- | -------------- |
-  | VIN       | phys 1 (3V3)   |
-  | GND       | phys 14 (GND)  |
-  | SDA       | phys 3 (GPIO2) |
-  | SCL       | phys 5 (GPIO3) |
+  | Board pin | HAT terminal           |
+  | --------- | ---------------------- |
+  | VIN       | `3V3`, IO17 block      |
+  | GND       | `GND`, IO17 block      |
+  | SDA       | `SDA` (GPIO2, phys 3)  |
+  | SCL       | `SCL` (GPIO3, phys 5)  |
 
-- Header pins may not be soldered yet. Unsoldered pins cause intermittent I2C,
-  which looks exactly like a software bug. If `i2cdetect` is flaky, suspect this first.
+- A loose header joint or terminal clamp causes intermittent I2C, which looks
+  exactly like a software bug. If `i2cdetect` is flaky, suspect those first.
 - **Mounting note (physical, later):** keep this sensor away from the Pi body.
   The Pi runs warm and will bias temperature high, which corrupts RH, which
   corrupts PM compensation. Put it on a short lead away from the Pi and the SPS30 exhaust.
@@ -155,6 +207,7 @@ shifters are used anywhere in this build. Two sensors take 5V POWER but output
 
 ```
 0x40  GY-21 (temp/humidity)   <- only device on the I2C bus
+0x68  DS3231 RTC              <- planned (README "Future work"), not wired
 ```
 
 Both PM and CO2 sensors are on UART, so the I2C bus has exactly one device.

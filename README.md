@@ -210,6 +210,28 @@ can't reach the server, it runs a fixed 40% duty, not a cached curve: the
 server and the PM sensor share the Pi, so no server means no PM data for a
 curve to act on. The Pi's own GPIO isn't used for fan control.
 
-Built so far: purifier B's ESP32 sets fan speed from its own web page
-([purifier/](purifier/)), and the target endpoint above. The polling and the
-fallback are what's left.
+Purifier B is done. Its ESP32 ([purifier/](purifier/)) follows the server's
+target, falls back to 40%, and reports fan RPM. Purifier A still runs on its
+knob hub, and gets the same setup with a spare ESP32.
+
+### Real-time clock
+
+The Pi 4 has no battery-backed clock. After a power loss it boots with the last
+time systemd-timesyncd saved, and only corrects it when NTP answers. Readings
+taken before then get a wrong `captured_at`. After the power losses on
+2026-11-05 and 2026-11-06, the first readings were stamped about 2 and 15
+minutes early. After a long outage, or with the internet still down when power
+returns, the error could be hours.
+
+The planned fix is an Adafruit DS3231 RTC on the I2C bus at 0x68, which doesn't
+clash with the GY-21 at 0x40. It gets wired through the screw-terminal HAT,
+plus `dtoverlay=i2c-rtc,ds3231` in `/boot/firmware/config.txt`. (Avoid the
+cheap ZS-042 boards: they try to charge a non-rechargeable coin cell.) Making
+the agent wait for NTP is not the fix. With the internet down it would stop
+recording, which breaks "never drop a reading".
+
+### Low-battery shutdown
+
+The Pi runs through a PiPower UPS (see CLAUDE.md), but it can't see a low
+battery yet. A long outage still ends in a hard power cut. The plan is to wire
+the PiPower's low-battery signal to GPIO27 and add `dtoverlay=gpio-shutdown`.
