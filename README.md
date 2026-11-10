@@ -107,7 +107,7 @@ server/
   app/db.py                        SQLite connection + schema init
   app/rollup.py                    tiered aggregation, verify_bucket
   app/maintenance.py               daily rollup + verify + prune
-  app/purifier.py                  PM2.5 -> purifier fan duty curve
+  app/purifier.py                  PM2.5 curve + boost -> purifier fan duty
   tests/                           pytest (requirements-dev.txt)
 web/
   src/{App,api}.tsx                React 19 + Recharts SPA
@@ -179,11 +179,18 @@ and `"reason": "stale"`.
 
 ```json
 {"purifier": "b", "duty_pct": 60, "pm25_avg": 2.0, "n": 58,
- "window_minutes": 5, "reason": "curve",
+ "window_minutes": 5, "reason": "curve", "boost_until": null,
  "computed_at": "2026-10-31T17:00:00.000000+00:00"}
 ```
 
-Read-only and unauthenticated, like `GET /api/readings`.
+Unauthenticated, like `GET /api/readings`.
+
+`POST /api/purifier/{a|b}/boost` with `{"minutes": N}` (0 to 60) sets the
+target to 100%, or 70% from 23:00 to 07:00 local time, for the next N minutes,
+with `"reason": "boost"`. If the curve asks for more, the curve wins. It replaces any running boost, and 0
+clears it. Home Assistant calls it when a cat uses the Litter-Robot, because
+the PM sensor can't see litter smell. Only loopback reaches it: Caddy rejects
+POST from outside.
 
 ## Hardware notes
 
@@ -211,7 +218,8 @@ server and the PM sensor share the Pi, so no server means no PM data for a
 curve to act on. The Pi's own GPIO isn't used for fan control.
 
 Purifier B is done. Its ESP32 ([purifier/](purifier/)) follows the server's
-target, falls back to 40%, and reports fan RPM. Purifier A still runs on its
+target, falls back to 40%, reports fan RPM, and gets a boost from Home
+Assistant during Litter-Robot visits. Purifier A still runs on its
 knob hub, and gets the same setup with a spare ESP32.
 
 ### Real-time clock

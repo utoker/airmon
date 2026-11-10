@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 
 from . import purifier, rollup
 from .db import connect, init_db
-from .schema import ReadingBatch
+from .schema import PurifierBoost, ReadingBatch
 
 # Tier definitions (resolution label, seconds per bucket, source table).
 # API picks the finest tier whose point count fits POINT_TARGET_MAX.
@@ -185,7 +185,8 @@ def get_purifier_target(name: str) -> dict:
     """Fan duty the purifier's ESP32 should run, from recent PM2.5.
 
     Averages pm25 over the trailing window. No PM2.5 in the window means the
-    sensor or agent is down, so return the fixed fallback and say so.
+    sensor or agent is down, so return the fixed fallback and say so. A
+    running boost can raise the duty (purifier.target).
     """
     if name not in purifier.PURIFIERS:
         raise HTTPException(status_code=404, detail="unknown purifier")
@@ -198,15 +199,31 @@ def get_purifier_target(name: str) -> dict:
             "SELECT AVG(pm25), COUNT(pm25) FROM readings WHERE captured_at >= ?",
             (cutoff,),
         ).fetchone()
+    boost_until = purifier.boost_until(name, now)
+    duty, reason = purifier.target(pm25_avg, boost_until is not None, now)
     return {
         "purifier": name,
-        "duty_pct": purifier.target_pct(pm25_avg),
+        "duty_pct": duty,
         "pm25_avg": pm25_avg,
         "n": n,
         "window_minutes": purifier.WINDOW_MINUTES,
-        "reason": "curve" if pm25_avg is not None else "stale",
+        "reason": reason,
+        "boost_until": boost_until.isoformat() if boost_until else None,
         "computed_at": now.isoformat(),
     }
+
+
+@api.post("/purifier/{name}/boost")
+def post_purifier_boost(name: str, boost: PurifierBoost) -> dict:
+    """Boost the purifier for the next `minutes`, replacing any current boost.
+
+    Home Assistant calls this on a Litter-Robot visit, over loopback only:
+    Caddy rejects POST on the public site and on the ESP32s' :8081 listener.
+    """
+    if name not in purifier.PURIFIERS:
+        raise HTTPException(status_code=404, detail="unknown purifier")
+    until = purifier.set_boost(name, boost.minutes, datetime.now(timezone.utc))
+    return {"purifier": name, "boost_until": until.isoformat() if until else None}
 
 
 app.include_router(api)
